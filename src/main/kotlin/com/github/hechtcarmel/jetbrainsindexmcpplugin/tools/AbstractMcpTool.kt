@@ -19,7 +19,6 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ReadAction
-import com.intellij.openapi.application.TransactionGuard
 import com.intellij.openapi.application.asContextElement
 import com.intellij.openapi.application.readAction as platformReadAction
 import com.intellij.openapi.command.WriteCommandAction
@@ -149,22 +148,16 @@ abstract class AbstractMcpTool : McpTool {
     /**
      * Commits all documents in a write-safe context.
      *
-     * [PsiDocumentManager.commitAllDocuments] requires a write-safe EDT context
-     * (enforced by [TransactionGuard]). Since MCP tools are invoked from HTTP handlers
-     * (not user actions), there is no inherent write-safe context.
-     * [TransactionGuard.submitTransactionAndWait] explicitly creates one.
-     *
-     * From EDT (e.g. inside [withContext]([Dispatchers.EDT])), falls back to
-     * [WriteCommandAction] which also provides write-safety.
+     * [PsiDocumentManager.commitAllDocuments] requires a write-safe EDT context.
+     * MCP HTTP handlers run from coroutine worker threads and may carry a
+     * write-unsafe modality context, so this must not use synchronous transaction
+     * submission inherited from the caller.
      */
-    @Suppress("DEPRECATION")
     protected suspend fun commitDocuments(project: Project) {
         if (ApplicationManager.getApplication().isDispatchThread) {
-            WriteCommandAction.runWriteCommandAction(project) {
-                PsiDocumentManager.getInstance(project).commitAllDocuments()
-            }
+            PsiDocumentManager.getInstance(project).commitAllDocuments()
         } else {
-            TransactionGuard.getInstance().submitTransactionAndWait {
+            withContext(Dispatchers.EDT + ModalityState.nonModal().asContextElement()) {
                 PsiDocumentManager.getInstance(project).commitAllDocuments()
             }
         }

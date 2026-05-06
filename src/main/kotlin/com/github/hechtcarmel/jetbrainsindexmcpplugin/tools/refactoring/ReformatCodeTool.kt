@@ -122,8 +122,8 @@ class ReformatCodeTool : AbstractMcpTool() {
             }
         }
 
-        // Commit and save outside EDT block — commitDocuments uses
-        // TransactionGuard.submitTransactionAndWait for write-safe context
+        // Commit and save outside EDT block; commitDocuments switches to a
+        // write-safe EDT modality.
         if (errorMessage == null) {
             commitDocuments(project)
             edtAction { FileDocumentManager.getInstance().saveAllDocuments() }
