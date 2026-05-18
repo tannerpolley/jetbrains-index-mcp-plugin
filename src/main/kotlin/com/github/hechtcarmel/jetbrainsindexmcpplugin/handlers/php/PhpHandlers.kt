@@ -573,7 +573,8 @@ class PhpStructureHandler : BasePhpHandler<List<StructureNode>>(), StructureHand
             getName(element)
         )
             .mapNotNull { it?.trim()?.trim('\\') }
-            .firstOrNull { it.isNotBlank() }
+            .firstOrNull()
+            ?.ifBlank { "<global>" }
     }
 
     private fun describeClass(
@@ -603,7 +604,8 @@ class PhpStructureHandler : BasePhpHandler<List<StructureNode>>(), StructureHand
             ?.filterNot { kind == StructureKind.ENUM && isImplicitEnumInterface(it) }
             .orEmpty()
         if (interfaces.isNotEmpty()) {
-            signatureParts += "implements ${interfaces.joinToString(", ")}"
+            val relation = if (kind == StructureKind.INTERFACE) "extends" else "implements"
+            signatureParts += "$relation ${interfaces.joinToString(", ")}"
         }
 
         val traits = getTraits(element)
@@ -645,7 +647,7 @@ class PhpStructureHandler : BasePhpHandler<List<StructureNode>>(), StructureHand
             ?: return null
 
         return IdeStructureViewExtractor.StructureElementInfo(
-            name = name.trim('\\'),
+            name = name.trim('\\').ifBlank { "<global>" },
             kind = StructureKind.NAMESPACE
         )
     }
@@ -716,7 +718,10 @@ class PhpStructureHandler : BasePhpHandler<List<StructureNode>>(), StructureHand
 
     private fun memberModifiersFor(element: PsiElement, kind: StructureKind): List<String> {
         return modifiersFor(element, includeVisibility = true).filterNot { modifier ->
-            kind == StructureKind.CONSTANT && modifier == "static"
+            kind == StructureKind.CONSTANT && modifier == "static" ||
+                modifier == "final" &&
+                (kind == StructureKind.PROPERTY || kind == StructureKind.CONSTANT) &&
+                !hasExplicitModifierKeyword(element, "final")
         }
     }
 
@@ -792,6 +797,19 @@ class PhpStructureHandler : BasePhpHandler<List<StructureNode>>(), StructureHand
 
     private fun hasModifierFlag(element: PsiElement, methodName: String): Boolean {
         return invokeBoolean(element, methodName) || invokeModifier(element)?.let { invokeBoolean(it, methodName) } == true
+    }
+
+    private fun hasExplicitModifierKeyword(element: PsiElement, keyword: String): Boolean {
+        val modifierText = (invokeModifier(element) as? PsiElement)?.text
+        if (modifierText != null && containsWord(modifierText, keyword)) {
+            return true
+        }
+
+        return element.text.lineSequence().firstOrNull()?.let { containsWord(it, keyword) } == true
+    }
+
+    private fun containsWord(text: String, word: String): Boolean {
+        return Regex("""(?i)(^|\W)${Regex.escape(word)}($|\W)""").containsMatchIn(text)
     }
 
     private fun invokeModifier(element: PsiElement): Any? {
