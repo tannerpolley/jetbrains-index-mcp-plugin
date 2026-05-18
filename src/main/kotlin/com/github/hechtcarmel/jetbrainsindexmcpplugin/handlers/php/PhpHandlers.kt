@@ -805,7 +805,24 @@ class PhpStructureHandler : BasePhpHandler<List<StructureNode>>(), StructureHand
             return true
         }
 
+        val lineText = elementLineText(element)
+        if (lineText != null && containsWord(lineText, keyword)) {
+            return true
+        }
+
         return element.text.lineSequence().firstOrNull()?.let { containsWord(it, keyword) } == true
+    }
+
+    private fun elementLineText(element: PsiElement): String? {
+        val psiFile = element.containingFile ?: return null
+        val document = PsiDocumentManager.getInstance(element.project).getDocument(psiFile) ?: return null
+        val line = document.getLineNumber(element.textOffset)
+        return document.getText(
+            com.intellij.openapi.util.TextRange(
+                document.getLineStartOffset(line),
+                document.getLineEndOffset(line)
+            )
+        )
     }
 
     private fun containsWord(text: String, word: String): Boolean {
