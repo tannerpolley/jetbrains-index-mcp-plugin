@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+## [4.17.2] - 2026-05-18
+### Fixed
+- De-duplicated PHP interface and trait names in `ide_file_structure` class signatures.
+
 ## [4.17.1] - 2026-05-17
 ### Fixed
 - minor issues with - PHP support to `ide_file_structure`

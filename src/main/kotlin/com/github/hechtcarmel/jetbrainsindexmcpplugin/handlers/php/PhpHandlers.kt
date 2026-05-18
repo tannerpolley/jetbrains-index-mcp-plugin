@@ -600,8 +600,10 @@ class PhpStructureHandler : BasePhpHandler<List<StructureNode>>(), StructureHand
         val interfaces = getImplementedInterfaces(element)
             ?.filterIsInstance<PsiElement>()
             ?.mapNotNull { getName(it) ?: getFQN(it) }
+            ?.map { it.trim() }
             ?.filter { it.isNotBlank() }
             ?.filterNot { kind == StructureKind.ENUM && isImplicitEnumInterface(it) }
+            ?.distinct()
             .orEmpty()
         if (interfaces.isNotEmpty()) {
             val relation = if (kind == StructureKind.INTERFACE) "extends" else "implements"
@@ -611,7 +613,9 @@ class PhpStructureHandler : BasePhpHandler<List<StructureNode>>(), StructureHand
         val traits = getTraits(element)
             ?.filterIsInstance<PsiElement>()
             ?.mapNotNull { getName(it) ?: getFQN(it) }
+            ?.map { it.trim() }
             ?.filter { it.isNotBlank() }
+            ?.distinct()
             .orEmpty()
         if (traits.isNotEmpty()) {
             signatureParts += "uses ${traits.joinToString(", ")}"
