@@ -7,6 +7,7 @@
 ## [4.17.0] - 2026-05-17
 ### Added
 - Added PHP support to `ide_file_structure` using the IDE Structure View API. Works in PhpStorm and IntelliJ IDEA Ultimate with the PHP plugin enabled.
+- PHP structure output includes namespace containers, constructor-promoted property modifiers, enum cases, constants, and includes while filtering implicit PHP runtime details from enums.
 
 ## [4.16.3] - 2026-05-06
 ### Fixed

@@ -473,12 +473,18 @@ class PhpStructureHandler : BasePhpHandler<List<StructureNode>>(), StructureHand
     override fun getFileStructure(file: PsiFile, project: Project): List<StructureNode> {
         if (!canHandle(file)) return emptyList()
 
-        return IdeStructureViewExtractor.extract(
+        val nodes = IdeStructureViewExtractor.extract(
             file = file,
             project = project,
             classifier = PhpStructureClassifier()
         )
+        return addNamespaceContainers(file, project, nodes)
     }
+
+    private data class NamespaceRegion(
+        val name: String,
+        val line: Int
+    )
 
     private inner class PhpStructureClassifier : IdeStructureViewExtractor.Classifier {
         override fun describe(
@@ -499,6 +505,75 @@ class PhpStructureHandler : BasePhpHandler<List<StructureNode>>(), StructureHand
                 else -> null
             }
         }
+    }
+
+    private fun addNamespaceContainers(
+        file: PsiFile,
+        project: Project,
+        nodes: List<StructureNode>
+    ): List<StructureNode> {
+        if (nodes.any { it.kind == StructureKind.NAMESPACE }) return nodes
+
+        val namespaces = findNamespaceRegions(file, project)
+        if (namespaces.isEmpty()) return nodes
+
+        if (nodes.isEmpty()) {
+            return namespaces.map { namespace ->
+                StructureNode(
+                    name = namespace.name,
+                    kind = StructureKind.NAMESPACE,
+                    modifiers = emptyList(),
+                    signature = null,
+                    line = namespace.line
+                )
+            }
+        }
+
+        val result = nodes.filter { it.line < namespaces.first().line }.toMutableList()
+
+        namespaces.forEachIndexed { index, namespace ->
+            val nextNamespaceLine = namespaces.getOrNull(index + 1)?.line ?: Int.MAX_VALUE
+            val namespaceChildren = nodes.filter { node ->
+                node.line >= namespace.line && node.line < nextNamespaceLine
+            }
+
+            result += StructureNode(
+                name = namespace.name,
+                kind = StructureKind.NAMESPACE,
+                modifiers = emptyList(),
+                signature = null,
+                line = namespace.line,
+                children = namespaceChildren
+            )
+        }
+
+        return result
+    }
+
+    private fun findNamespaceRegions(file: PsiFile, project: Project): List<NamespaceRegion> {
+        val namespaceClass = phpNamespaceClass ?: return emptyList()
+
+        @Suppress("UNCHECKED_CAST")
+        val namespaces = PsiTreeUtil.findChildrenOfType(file, namespaceClass as Class<out PsiElement>)
+
+        return namespaces
+            .mapNotNull { namespace ->
+                val name = namespaceName(namespace) ?: return@mapNotNull null
+                val line = getLineNumber(project, namespace) ?: return@mapNotNull null
+                NamespaceRegion(name = name, line = line)
+            }
+            .distinct()
+            .sortedBy { it.line }
+    }
+
+    private fun namespaceName(element: PsiElement): String? {
+        return sequenceOf(
+            invokeString(element, "getFQN"),
+            invokeString(element, "getNamespaceName"),
+            getName(element)
+        )
+            .mapNotNull { it?.trim()?.trim('\\') }
+            .firstOrNull { it.isNotBlank() }
     }
 
     private fun describeClass(
@@ -525,6 +600,7 @@ class PhpStructureHandler : BasePhpHandler<List<StructureNode>>(), StructureHand
             ?.filterIsInstance<PsiElement>()
             ?.mapNotNull { getName(it) ?: getFQN(it) }
             ?.filter { it.isNotBlank() }
+            ?.filterNot { kind == StructureKind.ENUM && isImplicitEnumInterface(it) }
             .orEmpty()
         if (interfaces.isNotEmpty()) {
             signatureParts += "implements ${interfaces.joinToString(", ")}"
@@ -542,17 +618,29 @@ class PhpStructureHandler : BasePhpHandler<List<StructureNode>>(), StructureHand
         return IdeStructureViewExtractor.StructureElementInfo(
             name = name,
             kind = kind,
-            modifiers = modifiersFor(element, includeVisibility = false),
+            modifiers = classModifiersFor(element, kind),
             signature = signatureParts.joinToString(" ").ifBlank { null }
         )
+    }
+
+    private fun classModifiersFor(element: PsiElement, kind: StructureKind): List<String> {
+        return modifiersFor(element, includeVisibility = false).filterNot { modifier ->
+            modifier == "abstract" && (kind == StructureKind.INTERFACE || kind == StructureKind.TRAIT) ||
+                modifier == "final" && kind == StructureKind.ENUM
+        }
+    }
+
+    private fun isImplicitEnumInterface(name: String): Boolean {
+        return name.trim('\\') == "UnitEnum" || name.trim('\\') == "BackedEnum"
     }
 
     private fun describeNamespace(
         element: PsiElement,
         presentation: ItemPresentation
     ): IdeStructureViewExtractor.StructureElementInfo? {
-        val name = getName(element)
-            ?: invokeString(element, "getFQN")
+        val name = invokeString(element, "getFQN")
+            ?: invokeString(element, "getNamespaceName")
+            ?: getName(element)
             ?: presentation.presentableText?.trim()
             ?: return null
 
@@ -608,7 +696,7 @@ class PhpStructureHandler : BasePhpHandler<List<StructureNode>>(), StructureHand
         return IdeStructureViewExtractor.StructureElementInfo(
             name = name,
             kind = kind,
-            modifiers = modifiersFor(element, includeVisibility = true),
+            modifiers = memberModifiersFor(element, kind),
             signature = signatureFromPresentation(name, presentation)
         )
     }
@@ -621,9 +709,15 @@ class PhpStructureHandler : BasePhpHandler<List<StructureNode>>(), StructureHand
         return IdeStructureViewExtractor.StructureElementInfo(
             name = name,
             kind = StructureKind.CONSTANT,
-            modifiers = modifiersFor(element, includeVisibility = true),
+            modifiers = memberModifiersFor(element, StructureKind.CONSTANT),
             signature = signatureFromPresentation(name, presentation)
         )
+    }
+
+    private fun memberModifiersFor(element: PsiElement, kind: StructureKind): List<String> {
+        return modifiersFor(element, includeVisibility = true).filterNot { modifier ->
+            kind == StructureKind.CONSTANT && modifier == "static"
+        }
     }
 
     private fun describeEnumCase(
@@ -675,20 +769,41 @@ class PhpStructureHandler : BasePhpHandler<List<StructureNode>>(), StructureHand
         if (includeVisibility) {
             accessModifier(element)?.let { modifiers += it }
         }
-        if (invokeBoolean(element, "isAbstract")) modifiers += "abstract"
-        if (invokeBoolean(element, "isFinal")) modifiers += "final"
-        if (invokeBoolean(element, "isStatic")) modifiers += "static"
-        if (invokeBoolean(element, "isReadonly")) modifiers += "readonly"
+        if (hasModifierFlag(element, "isAbstract")) modifiers += "abstract"
+        if (hasModifierFlag(element, "isFinal")) modifiers += "final"
+        if (hasModifierFlag(element, "isStatic")) modifiers += "static"
+        if (hasModifierFlag(element, "isReadonly")) modifiers += "readonly"
 
         return modifiers.distinct()
     }
 
     private fun accessModifier(element: PsiElement): String? {
-        val access = invokeString(element, "getAccess")?.lowercase() ?: return null
+        val access = invokeAccessName(element, "getAccess")
+            ?: invokeModifier(element)?.let { invokeAccessName(it, "getAccess") }
+            ?: return null
+
+        return when (access) {
+            "private" -> "private"
+            "protected" -> "protected"
+            "public" -> "public"
+            else -> null
+        }
+    }
+
+    private fun hasModifierFlag(element: PsiElement, methodName: String): Boolean {
+        return invokeBoolean(element, methodName) || invokeModifier(element)?.let { invokeBoolean(it, methodName) } == true
+    }
+
+    private fun invokeModifier(element: PsiElement): Any? {
+        return invokeObject(element, "getModifier")
+    }
+
+    private fun invokeAccessName(target: Any, methodName: String): String? {
+        val access = invokeObject(target, methodName)?.toString()?.lowercase() ?: return null
         return when {
-            "private" in access -> "private"
-            "protected" in access -> "protected"
-            "public" in access -> "public"
+            access == "private" || access.endsWith(".private") -> "private"
+            access == "protected" || access.endsWith(".protected") -> "protected"
+            access == "public" || access.endsWith(".public") -> "public"
             else -> null
         }
     }
@@ -720,17 +835,21 @@ class PhpStructureHandler : BasePhpHandler<List<StructureNode>>(), StructureHand
         return null
     }
 
-    private fun invokeBoolean(element: PsiElement, methodName: String): Boolean {
+    private fun invokeBoolean(target: Any, methodName: String): Boolean {
         return try {
-            element.javaClass.getMethod(methodName).invoke(element) as? Boolean ?: false
+            target.javaClass.getMethod(methodName).invoke(target) as? Boolean ?: false
         } catch (e: Exception) {
             false
         }
     }
 
     private fun invokeString(element: PsiElement, methodName: String): String? {
+        return invokeObject(element, methodName)?.toString()
+    }
+
+    private fun invokeObject(target: Any, methodName: String): Any? {
         return try {
-            element.javaClass.getMethod(methodName).invoke(element)?.toString()
+            target.javaClass.getMethod(methodName).invoke(target)
         } catch (e: Exception) {
             null
         }
