@@ -75,15 +75,7 @@ dependencies {
     intellijPlatform {
         pluginVerifier()
         
-        val platformType = providers.gradleProperty("platformType").get()
-        val platformVersion = providers.gradleProperty("platformVersion").get()
-        if (platformType == "IDEA") {
-            intellijIdea(platformVersion) {
-                useInstaller = false
-            }
-        } else {
-            create(platformType, platformVersion)
-        }
+        create(providers.gradleProperty("platformType"), providers.gradleProperty("platformVersion"))
 
         // Plugin Dependencies. Uses `platformBundledPlugins` property from the gradle.properties file for bundled IntelliJ Platform plugins.
         bundledPlugins(providers.gradleProperty("platformBundledPlugins").map { it.split(',') })
