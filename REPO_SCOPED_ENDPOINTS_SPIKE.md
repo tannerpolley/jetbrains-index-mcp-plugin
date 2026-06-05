@@ -1,5 +1,13 @@
 # Repo-Scoped Endpoints Spike
 
+## Status
+
+Current local implementation status:
+
+- Implemented on `codex/repo-scoped-endpoints-prep` in commit `b638cdb`.
+- Repo-scoped transport routes, pinned-root handler behavior, repo ID lookup, and search scoping for `ide_find_file` and `ide_search_text` are in place.
+- Client config examples and the upstream-vs-fork publication decision are still open.
+
 ## Goal
 
 Expose separate MCP server identities for individual Git repos inside one IntelliJ workspace, while preventing search and navigation tools from leaking sibling-repo results.
@@ -14,13 +22,14 @@ Current behavior already resolves module or content-root paths for `project_path
 
 That means root resolution works, but repo isolation does not.
 
-## First Slice
+## Implemented Slice
 
 Implement additive repo-scoped Streamable HTTP and SSE endpoints without changing existing endpoint behavior:
 
 ```text
 /index-mcp/repos/<repo-id>/streamable-http
 /index-mcp/repos/<repo-id>/sse
+/index-mcp/repos/<repo-id>
 ```
 
 Each endpoint should bind one Git root before JSON-RPC tool execution. Calls through that endpoint should behave as if:
@@ -28,6 +37,8 @@ Each endpoint should bind one Git root before JSON-RPC tool execution. Calls thr
 - `project_path` defaults to the pinned Git root
 - conflicting `project_path` values fail loudly
 - search results outside the pinned Git root are blocked
+
+That slice is now implemented locally for the current branch.
 
 ## Exact Hook Points
 
@@ -158,18 +169,14 @@ Required changes:
 - apply the same scope for exact search and regex `FindModel.customScope`
 - keep output filtering as a safety check
 
-## Suggested Implementation Order
+## Remaining Work
 
-1. Add `RepoScopeContext` and a small registry for repo IDs to Git roots.
-2. Add repo-scoped transport endpoints in `KtorMcpServer`.
-3. Thread repo scope through `JsonRpcHandler`.
-4. Add `RepoRootScope` helpers.
-5. Apply repo-scoped search to `FindFileTool`.
-6. Apply repo-scoped search to `SearchTextTool`.
-7. Add explicit conflict errors for mismatched `project_path`.
-8. Add config examples for multiple MCP server entries.
+1. Add client config examples for multiple repo-specific MCP server entries.
+2. Decide whether the work should be prepared as an upstream PR or maintained as a fork-first feature.
+3. Review adjacent tools for repo-scope requirements beyond `ide_find_file` and `ide_search_text`.
+4. Decide how stable repo IDs should remain when Git roots are renamed or relocated.
 
-## Minimum Test Set
+## Local Verification Coverage
 
 ### Transport
 
@@ -205,7 +212,7 @@ Add tests for:
 
 ### Search Tool Scoping
 
-Likely new platform tests:
+Implemented test targets:
 
 - `FindFileToolScopeTest.kt`
 - `SearchTextToolScopeTest.kt`
