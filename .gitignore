@@ -8,3 +8,5 @@ build
 tmp
 .claude
 local.properties
+testing/repo-scoped-agent-workspace/master-project/.idea/
+testing/repo-scoped-agent-workspace/master-project/*/.git/
