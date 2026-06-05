@@ -116,6 +116,8 @@ The easiest way to configure your AI assistant:
    - **Copy Configuration** - For other clients: Copies the JSON config to your clipboard
 4. For "Copy Configuration" clients, paste the config into the appropriate config file
 
+When the current IDE window contains multiple Git repos, the Codex CLI path installs one repo-scoped MCP server per discovered repo using names like `<ide-server-name>-<repo-id>`.
+
 ## Community Integrations
 
 - [opencode-jetbrains-index](https://github.com/ineersa/opencode-jetbrains-index) - a third-party integration for OpenCode that uses this plugin
@@ -147,20 +149,27 @@ To remove: `claude mcp remove <server-name>` (e.g., `claude mcp remove intellij-
 
 ### Codex CLI
 
-Use the "Install on Coding Agents" button in the tool window, or run this command (adjust name and port for your IDE):
+Use the "Install on Coding Agents" button in the tool window. For a master IDE window with multiple Git repos, the Codex path installs one repo-scoped MCP server per discovered repo and targets the additive `/index-mcp/repos/<repo-id>/streamable-http` routes.
+
+Example for two discovered repos in IntelliJ IDEA:
 
 ```bash
-# IntelliJ IDEA
-codex mcp add intellij-index --url http://127.0.0.1:29170/index-mcp/streamable-http
-
-# PyCharm
-codex mcp add pycharm-index --url http://127.0.0.1:29172/index-mcp/streamable-http
-
-# WebStorm
-codex mcp add webstorm-index --url http://127.0.0.1:29173/index-mcp/streamable-http
+codex mcp remove intellij-index-alpha >/dev/null 2>&1 ; codex mcp add intellij-index-alpha --url http://127.0.0.1:29170/index-mcp/repos/alpha/streamable-http ; codex mcp remove intellij-index-beta >/dev/null 2>&1 ; codex mcp add intellij-index-beta --url http://127.0.0.1:29170/index-mcp/repos/beta/streamable-http
 ```
 
-To remove: `codex mcp remove <server-name>` (e.g., `codex mcp remove intellij-index`)
+Naming and behavior:
+
+- Server names use `<ide-server-name>-<repo-id>`, for example `intellij-index-alpha`
+- Each repo-scoped entry talks to `/index-mcp/repos/<repo-id>/streamable-http`
+- The multi-repo Codex flow does not add the broad `/index-mcp/streamable-http` entry
+
+If you intentionally want the legacy broad server instead of repo-scoped entries, add it manually:
+
+```bash
+codex mcp add intellij-index --url http://127.0.0.1:29170/index-mcp/streamable-http
+```
+
+To remove a repo-scoped entry: `codex mcp remove <server-name>` (for example `codex mcp remove intellij-index-alpha`)
 
 ### Cursor
 
@@ -318,6 +327,8 @@ When multiple projects are open in a single IDE window, you must specify which p
 If `project_path` is omitted:
 - **Single project open**: That project is used automatically
 - **Multiple projects open**: An error is returned with the list of available projects
+
+For Codex CLI, a repo-scoped install from **Install on Coding Agents** can reduce repeated `project_path` selection by registering one MCP server per discovered repo in the same IDE window.
 
 ### Workspace Projects
 

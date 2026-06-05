@@ -2,6 +2,7 @@ package com.github.hechtcarmel.jetbrainsindexmcpplugin.util
 
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.McpConstants
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.McpServerService
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.RepoScopeContext
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.settings.McpSettings
 import com.intellij.openapi.util.SystemInfo
 
@@ -22,6 +23,12 @@ import com.intellij.openapi.util.SystemInfo
  * All configurations use Streamable HTTP as the primary transport.
  */
 object ClientConfigGenerator {
+
+    data class RepoScopedCodexTarget(
+        val repoId: String,
+        val serverName: String,
+        val serverUrl: String
+    )
 
     /**
      * Gets the Streamable HTTP server URL (primary), using the running server URL if available,
@@ -83,19 +90,17 @@ object ClientConfigGenerator {
         serverName: String = getDefaultServerName(),
         platform: CommandPlatform = currentCommandPlatform()
     ): String {
-        val serverUrl = getStreamableHttpUrlOrDefault()
-
         return when (clientType) {
             ClientType.CLAUDE_CODE -> buildTerminalCommand(
-                generateClaudeCodeConfig(serverUrl, serverName, platform),
+                generateClaudeCodeConfig(getStreamableHttpUrlOrDefault(), serverName, platform),
                 platform
             )
             ClientType.CODEX_CLI -> buildTerminalCommand(
-                generateCodexConfig(serverUrl, serverName, platform),
+                generateCodexConfig(serverName, platform),
                 platform
             )
-            ClientType.GEMINI_CLI -> generateGeminiCliConfig(serverUrl, serverName)
-            ClientType.CURSOR -> generateCursorConfig(serverUrl, serverName)
+            ClientType.GEMINI_CLI -> generateGeminiCliConfig(getStreamableHttpUrlOrDefault(), serverName)
+            ClientType.CURSOR -> generateCursorConfig(getStreamableHttpUrlOrDefault(), serverName)
         }
     }
 
@@ -113,11 +118,10 @@ object ClientConfigGenerator {
         platform: CommandPlatform = currentCommandPlatform()
     ): String? {
         if (!clientType.supportsInstallCommand) return null
-        val serverUrl = getStreamableHttpUrlOrDefault()
 
         return when (clientType) {
-            ClientType.CLAUDE_CODE -> buildClaudeCodeCommand(serverUrl, serverName, platform)
-            ClientType.CODEX_CLI -> buildCodexCommand(serverUrl, serverName, platform)
+            ClientType.CLAUDE_CODE -> buildClaudeCodeCommand(getStreamableHttpUrlOrDefault(), serverName, platform)
+            ClientType.CODEX_CLI -> generateRepoScopedCodexCommand(serverName, platform)
             else -> null
         }
     }
@@ -221,11 +225,45 @@ object ClientConfigGenerator {
     }
 
     private fun generateCodexConfig(
-        serverUrl: String,
         serverName: String,
         platform: CommandPlatform
+    ): String = generateRepoScopedCodexCommand(serverName, platform)
+
+    internal fun buildRepoScopedCodexTargets(
+        repoScopes: List<RepoScopeContext>,
+        host: String,
+        port: Int,
+        baseServerName: String = getDefaultServerName()
+    ): List<RepoScopedCodexTarget> {
+        return repoScopes
+            .sortedBy { it.repoId }
+            .map { repoScope ->
+                RepoScopedCodexTarget(
+                    repoId = repoScope.repoId,
+                    serverName = "$baseServerName-${repoScope.repoId}",
+                    serverUrl = "http://$host:$port${McpConstants.getRepoStreamableHttpEndpointPath(repoScope.repoId)}"
+                )
+            }
+    }
+
+    internal fun buildRepoScopedCodexCommand(
+        targets: List<RepoScopedCodexTarget>,
+        platform: CommandPlatform = CommandPlatform.POSIX
     ): String {
-        return buildCodexCommand(serverUrl, serverName, platform)
+        if (targets.isEmpty()) {
+            throw IllegalStateException(
+                "No repo-scoped MCP endpoints are available. Open a workspace with Git roots to install repo-scoped Codex servers."
+            )
+        }
+
+        val separator = commandSeparator(platform)
+        return targets.joinToString(separator) { target ->
+            buildCodexCommand(
+                serverUrl = target.serverUrl,
+                serverName = target.serverName,
+                platform = platform
+            )
+        }
     }
 
     private fun commandSeparator(platform: CommandPlatform): String =
@@ -321,7 +359,9 @@ object ClientConfigGenerator {
 
             ClientType.CODEX_CLI -> """
                 Runs installation command in your terminal.
+                Installs one repo-scoped Codex server per discovered Git repo in the current IDE window.
                 Automatically handles reinstall if already installed (port may change).
+                This flow does not add the broad $serverName entry.
 
                 To remove manually: codex mcp remove $serverName
             """.trimIndent()
@@ -371,4 +411,19 @@ object ClientConfigGenerator {
      * Returns client types that can be copied to clipboard.
      */
     fun getCopyableClients(): List<ClientType> = ClientType.entries
+
+    private fun generateRepoScopedCodexCommand(
+        baseServerName: String = getDefaultServerName(),
+        platform: CommandPlatform = currentCommandPlatform()
+    ): String {
+        val settings = McpSettings.getInstance()
+        val repoScopes = McpServerService.getInstance().listRepoScopes()
+        val targets = buildRepoScopedCodexTargets(
+            repoScopes = repoScopes,
+            host = settings.serverHost,
+            port = settings.serverPort,
+            baseServerName = baseServerName
+        )
+        return buildRepoScopedCodexCommand(targets, platform)
+    }
 }

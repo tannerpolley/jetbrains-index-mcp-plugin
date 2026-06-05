@@ -222,8 +222,17 @@ class CopyClientConfigAction : AnAction() {
     }
 
     private fun runInstallCommand(clientType: ClientType, project: Project?) {
-        val command = ClientConfigGenerator.generateInstallCommand(clientType)
-            ?: return showNotification(project, "Error", "No install command for ${clientType.displayName}", NotificationType.ERROR)
+        val command = try {
+            ClientConfigGenerator.generateInstallCommand(clientType)
+                ?: return showNotification(project, "Error", "No install command for ${clientType.displayName}", NotificationType.ERROR)
+        } catch (e: Exception) {
+            return showNotification(
+                project,
+                "Installation Unavailable",
+                "Failed to generate ${clientType.displayName} installation command.\n\n${e.message}",
+                NotificationType.ERROR
+            )
+        }
 
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
@@ -278,8 +287,16 @@ class CopyClientConfigAction : AnAction() {
     }
 
     private fun copyConfigToClipboard(clientType: ClientType, project: Project?) {
-        val config = ClientConfigGenerator.generateConfig(clientType)
-        val locationHint = ClientConfigGenerator.getConfigLocationHint(clientType)
+        val (config, locationHint) = try {
+            ClientConfigGenerator.generateConfig(clientType) to ClientConfigGenerator.getConfigLocationHint(clientType)
+        } catch (e: Exception) {
+            return showNotification(
+                project,
+                "Configuration Unavailable",
+                "Failed to generate ${clientType.displayName} configuration.\n\n${e.message}",
+                NotificationType.ERROR
+            )
+        }
 
         CopyPasteManager.getInstance().setContents(StringSelection(config))
 

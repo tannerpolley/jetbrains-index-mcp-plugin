@@ -41,6 +41,7 @@ class McpServerService(
 ) : Disposable {
 
     private val toolRegistry: ToolRegistry = ToolRegistry()
+    private val repoScopeRegistry: RepoScopeRegistry = RepoScopeRegistry()
     private val jsonRpcHandler: JsonRpcHandler
     private val sseSessionManager: KtorSseSessionManager = KtorSseSessionManager()
     private var ktorServer: KtorMcpServer? = null
@@ -221,6 +222,8 @@ class McpServerService(
      * Returns the configured server port.
      */
     fun getServerPort(): Int = McpSettings.getInstance().serverPort
+
+    fun listRepoScopes(): List<RepoScopeContext> = repoScopeRegistry.listScopes()
 
     /**
      * Returns information about the server status.
