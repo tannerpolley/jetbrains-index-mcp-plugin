@@ -35,6 +35,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.regex.PatternSyntaxException
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonPrimitive
@@ -111,6 +112,7 @@ class SearchTextTool : AbstractMcpTool() {
         val filePattern = optionalStringArg(arguments, ParamNames.FILE_PATTERN)
         val pageSize = resolvePageSize(arguments, DEFAULT_PAGE_SIZE, aliases = arrayOf("limit"))
         val collectLimit = maxOf(PaginationService.DEFAULT_OVERCOLLECT, pageSize)
+        val requestedRootPath = requestedProjectPath(arguments)
 
         if (query.isBlank()) {
             return createErrorResult("Query cannot be empty")
@@ -125,7 +127,7 @@ class SearchTextTool : AbstractMcpTool() {
         }
         val findModel = if (regex) {
             try {
-                createFindModel(project, query, caseSensitive, filePattern, findSearchContext)
+                createFindModel(project, query, caseSensitive, filePattern, findSearchContext, requestedRootPath)
             } catch (e: PatternSyntaxException) {
                 return createErrorResult("Invalid regex query: ${e.message}")
             } catch (e: IllegalArgumentException) {
@@ -146,12 +148,22 @@ class SearchTextTool : AbstractMcpTool() {
                 filePattern = filePattern,
                 matches = matches,
                 searchExtender = { seenKeys, limit ->
-                    extendSearchText(project, query, findModel, usageSearchContext, caseSensitive, fileMaskCondition, seenKeys, limit)
+                    extendSearchText(
+                        project,
+                        query,
+                        findModel,
+                        usageSearchContext,
+                        caseSensitive,
+                        fileMaskCondition,
+                        requestedRootPath,
+                        seenKeys,
+                        limit
+                    )
                 }
             )
         } else {
             suspendingReadAction {
-                val scope = createSearchScope(project, fileMaskCondition)
+                val scope = createSearchScope(project, fileMaskCondition, requestedRootPath)
                 val matches = searchText(project, query, scope, usageSearchContext, caseSensitive, collectLimit)
                 createCursor(
                     project = project,
@@ -161,7 +173,17 @@ class SearchTextTool : AbstractMcpTool() {
                     matches = matches,
                     searchExtender = { seenKeys, limit ->
                         suspendingReadAction {
-                            extendSearchText(project, query, null, usageSearchContext, caseSensitive, fileMaskCondition, seenKeys, limit)
+                            extendSearchText(
+                                project,
+                                query,
+                                null,
+                                usageSearchContext,
+                                caseSensitive,
+                                fileMaskCondition,
+                                requestedRootPath,
+                                seenKeys,
+                                limit
+                            )
                         }
                     }
                 )
@@ -244,7 +266,8 @@ class SearchTextTool : AbstractMcpTool() {
         query: String,
         caseSensitive: Boolean,
         filePattern: String?,
-        searchContext: FindModel.SearchContext
+        searchContext: FindModel.SearchContext,
+        requestedRootPath: String?
     ): FindModel {
         return FindModel().apply {
             stringToFind = query
@@ -255,7 +278,7 @@ class SearchTextTool : AbstractMcpTool() {
             isFindAll = true
             isMultiline = true
             this.searchContext = searchContext
-            customScope = createFilteredScope(project)
+            customScope = createFilteredScope(project, repoRootPath = requestedRootPath)
             isCustomScope = true
             fileFilter = filePattern?.trim().orEmpty()
             compileRegExp()
@@ -330,10 +353,11 @@ class SearchTextTool : AbstractMcpTool() {
         searchContext: Short,
         caseSensitive: Boolean,
         fileMaskCondition: Condition<CharSequence>?,
+        requestedRootPath: String?,
         seenKeys: Set<String>,
         limit: Int
     ): List<PaginationService.SerializedResult> {
-        val scope = createSearchScope(project, fileMaskCondition)
+        val scope = createSearchScope(project, fileMaskCondition, requestedRootPath)
         if (findModel != null) {
             return searchRegex(project, findModel, searchContext, limit, seenKeys)
                 .asSequence()
@@ -507,9 +531,10 @@ class SearchTextTool : AbstractMcpTool() {
 
     private fun createSearchScope(
         project: Project,
-        fileMaskCondition: Condition<CharSequence>?
+        fileMaskCondition: Condition<CharSequence>?,
+        requestedRootPath: String?
     ): GlobalSearchScope {
-        val baseScope = createFilteredScope(project)
+        val baseScope = createFilteredScope(project, repoRootPath = requestedRootPath)
         if (fileMaskCondition == null) {
             return baseScope
         }
@@ -521,6 +546,11 @@ class SearchTextTool : AbstractMcpTool() {
             }
         }
     }
+
+    private fun requestedProjectPath(arguments: JsonObject): String? =
+        arguments[ParamNames.PROJECT_PATH]?.jsonPrimitive?.contentOrNull
+            ?.takeIf { it.isNotBlank() }
+            ?.let(ProjectResolver::normalizePath)
 
     private fun resolveActualContextType(element: PsiElement): String {
         // Check if element is inside a comment (PsiComment or comment-type node)

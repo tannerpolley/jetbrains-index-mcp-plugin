@@ -4,6 +4,7 @@ import com.github.hechtcarmel.jetbrainsindexmcpplugin.constants.ParamNames
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.constants.ToolNames
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.BuiltInSearchScope
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.BuiltInSearchScopeResolver
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.applyRepoRootScope
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.PaginationService
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.ProjectResolver
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.models.ToolCallResult
@@ -30,6 +31,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonPrimitive
@@ -106,6 +108,7 @@ class FindFileTool : AbstractMcpTool() {
         }
         val pageSize = resolvePageSize(arguments, DEFAULT_PAGE_SIZE, aliases = arrayOf("limit"))
         val collectLimit = maxOf(PaginationService.DEFAULT_OVERCOLLECT, pageSize)
+        val requestedRootPath = requestedProjectPath(arguments)
 
         if (query.isBlank()) {
             return createErrorResult("Query cannot be empty")
@@ -114,7 +117,7 @@ class FindFileTool : AbstractMcpTool() {
         requireSmartMode(project)
 
         val cursorToken = suspendingReadAction {
-            val searchScope = resolveSearchScope(project, scope)
+            val searchScope = resolveSearchScope(project, scope, requestedRootPath)
             val matcher = createMatcher(query)
             val files = searchFiles(project, query, searchScope, scope, collectLimit, matcher)
 
@@ -124,7 +127,7 @@ class FindFileTool : AbstractMcpTool() {
 
             val searchExtender: suspend (Set<String>, Int) -> List<PaginationService.SerializedResult> = { seenKeys, limit ->
                 suspendingReadAction {
-                    extendSearchFiles(project, query, scope, seenKeys, limit)
+                    extendSearchFiles(project, query, scope, requestedRootPath, seenKeys, limit)
                 }
             }
 
@@ -172,10 +175,11 @@ class FindFileTool : AbstractMcpTool() {
         project: Project,
         query: String,
         scope: BuiltInSearchScope,
+        requestedRootPath: String?,
         seenKeys: Set<String>,
         limit: Int
     ): List<PaginationService.SerializedResult> {
-        val searchScope = resolveSearchScope(project, scope)
+        val searchScope = resolveSearchScope(project, scope, requestedRootPath)
         val matcher = createMatcher(query)
         val files = searchFiles(project, query, searchScope, scope, limit + seenKeys.size, matcher)
 
@@ -295,9 +299,28 @@ class FindFileTool : AbstractMcpTool() {
         }
     }
 
-    private fun resolveSearchScope(project: Project, scope: BuiltInSearchScope): GlobalSearchScope {
-        return BuiltInSearchScopeResolver.resolveGlobalScope(project, scope)
+    private fun resolveSearchScope(
+        project: Project,
+        scope: BuiltInSearchScope,
+        requestedRootPath: String?
+    ): GlobalSearchScope {
+        val baseScope = BuiltInSearchScopeResolver.resolveGlobalScope(project, scope)
+        if (requestedRootPath == null) {
+            return baseScope
+        }
+
+        return applyRepoRootScope(
+            project = project,
+            baseScope = baseScope,
+            repoRootPath = requestedRootPath,
+            includeLibraries = scope == BuiltInSearchScope.PROJECT_AND_LIBRARIES
+        )
     }
+
+    private fun requestedProjectPath(arguments: JsonObject): String? =
+        arguments[ParamNames.PROJECT_PATH]?.jsonPrimitive?.contentOrNull
+            ?.takeIf { it.isNotBlank() }
+            ?.let(ProjectResolver::normalizePath)
 
 
 

@@ -2,6 +2,7 @@ package com.github.hechtcarmel.jetbrainsindexmcpplugin.server.transport
 
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.McpConstants
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.JsonRpcHandler
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.RepoScopeRegistry
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolRegistry
 import io.ktor.http.HttpStatusCode
 import junit.framework.TestCase
@@ -26,9 +27,12 @@ class KtorMcpServerUnitTest : TestCase() {
     private val httpClient = HttpClient.newHttpClient()
     private val json = Json { ignoreUnknownKeys = true }
     private val mcpSessionIdHeader = "Mcp-Session-Id"
+    private val repoScopedRoot = "C:/workspace/repo-a"
+    private val repoScopedId = "repo-a"
 
     private lateinit var toolRegistry: ToolRegistry
     private lateinit var coroutineScope: CoroutineScope
+    private lateinit var repoScopeRegistry: RepoScopeRegistry
     private lateinit var sseSessionManager: KtorSseSessionManager
     private lateinit var server: KtorMcpServer
     private var port: Int = 0
@@ -37,6 +41,7 @@ class KtorMcpServerUnitTest : TestCase() {
         super.setUp()
         toolRegistry = ToolRegistry().also { it.registerBuiltInTools() }
         coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        repoScopeRegistry = RepoScopeRegistry { listOf(repoScopedRoot) }
         sseSessionManager = KtorSseSessionManager()
         port = findFreePort()
         server = createServer(port)
@@ -243,6 +248,57 @@ class KtorMcpServerUnitTest : TestCase() {
         }
     }
 
+    fun testRepoScopedStreamableInitializeReturns2025ProtocolVersion() {
+        val response = sendRequest(
+            method = "POST",
+            path = repoScopedStreamablePath(repoScopedId),
+            body = initializeRequestBody("2025-03-26")
+        )
+
+        assertEquals(HttpStatusCode.OK.value, response.statusCode())
+
+        val responseBody = json.parseToJsonElement(response.body()).jsonObject
+        assertEquals(
+            "2025-03-26",
+            responseBody["result"]!!.jsonObject["protocolVersion"]!!.jsonPrimitive.content
+        )
+    }
+
+    fun testRepoScopedUnknownRepoIdReturnsNotFound() {
+        val response = sendRequest(
+            method = "POST",
+            path = repoScopedStreamablePath("missing-repo"),
+            body = initializeRequestBody("2025-03-26")
+        )
+
+        assertEquals(HttpStatusCode.NotFound.value, response.statusCode())
+    }
+
+    fun testRepoScopedSseHandshakeAdvertisesRepoScopedPostEndpoint() {
+        val response = openSseStream(repoScopedSsePath(repoScopedId))
+        response.body().use {
+            assertEquals(HttpStatusCode.OK.value, response.statusCode())
+
+            val reader = it.bufferedReader()
+            val endpointEvent = readSseEvent(reader)
+            assertEquals("endpoint", endpointEvent.eventType())
+
+            val endpointPath = endpointEvent.data()
+            assertTrue(endpointPath.startsWith("${repoScopedPostPath(repoScopedId)}?${McpConstants.SESSION_ID_PARAM}="))
+
+            val postResponse = sendRequest(
+                method = "POST",
+                path = endpointPath,
+                body = """{"jsonrpc":"2.0","id":1,"method":"ping"}"""
+            )
+
+            assertEquals(HttpStatusCode.Accepted.value, postResponse.statusCode())
+
+            val messageEvent = readSseEvent(reader)
+            assertEquals("message", messageEvent.eventType())
+        }
+    }
+
     fun testStreamableRequestStillWorksAfterRestart() {
         server.stop()
 
@@ -264,7 +320,8 @@ class KtorMcpServerUnitTest : TestCase() {
             port = port,
             jsonRpcHandler = JsonRpcHandler(toolRegistry),
             sseSessionManager = sseSessionManager,
-            coroutineScope = coroutineScope
+            coroutineScope = coroutineScope,
+            repoScopeRegistry = repoScopeRegistry
         )
     }
 
@@ -348,6 +405,15 @@ class KtorMcpServerUnitTest : TestCase() {
           }
         }
     """.trimIndent()
+
+    private fun repoScopedStreamablePath(repoId: String) =
+        "${McpConstants.MCP_ENDPOINT_PATH}/repos/$repoId/streamable-http"
+
+    private fun repoScopedSsePath(repoId: String) =
+        "${McpConstants.MCP_ENDPOINT_PATH}/repos/$repoId/sse"
+
+    private fun repoScopedPostPath(repoId: String) =
+        "${McpConstants.MCP_ENDPOINT_PATH}/repos/$repoId"
 
     private fun findFreePort(): Int = ServerSocket(0).use { it.localPort }
 }

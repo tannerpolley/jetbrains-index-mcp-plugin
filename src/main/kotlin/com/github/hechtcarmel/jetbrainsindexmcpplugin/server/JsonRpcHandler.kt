@@ -21,9 +21,9 @@ class JsonRpcHandler @JvmOverloads constructor(
     },
     private val updateHistory: (Project, String, CommandStatus, String?, Long?) -> Unit = { project, id, status, result, duration ->
         CommandHistoryService.getInstance(project).updateCommandStatus(id, status, result, duration)
-    }
+    },
+    private val resolveProject: (String?) -> ProjectResolver.Result = ProjectResolver::resolve
 ) {
-    private val projectResolver = ProjectResolver
     private val json = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true
@@ -35,11 +35,12 @@ class JsonRpcHandler @JvmOverloads constructor(
     }
 
     suspend fun handleRequest(jsonString: String): String? =
-        handleRequest(jsonString, McpConstants.MCP_PROTOCOL_VERSION)
+        handleRequest(jsonString, McpConstants.MCP_PROTOCOL_VERSION, repoScope = null)
 
     suspend fun handleRequest(
         jsonString: String,
-        protocolVersion: String
+        protocolVersion: String,
+        repoScope: RepoScopeContext? = null
     ): String? {
         val request = try {
             json.decodeFromString<JsonRpcRequest>(jsonString)
@@ -57,7 +58,7 @@ class JsonRpcHandler @JvmOverloads constructor(
         }
 
         val response = try {
-            routeRequest(request, protocolVersion)
+            routeRequest(request, protocolVersion, repoScope)
         } catch (e: Exception) {
             LOG.error("Error processing request: ${request.method}", e)
             createErrorResponse(request.id, JsonRpcErrorCodes.INTERNAL_ERROR, e.message ?: "Unknown error")
@@ -66,12 +67,16 @@ class JsonRpcHandler @JvmOverloads constructor(
         return response?.let { json.encodeToString(response) }
     }
 
-    private suspend fun routeRequest(request: JsonRpcRequest, protocolVersion: String): JsonRpcResponse? {
+    private suspend fun routeRequest(
+        request: JsonRpcRequest,
+        protocolVersion: String,
+        repoScope: RepoScopeContext?
+    ): JsonRpcResponse? {
         return when (request.method) {
             JsonRpcMethods.INITIALIZE -> processInitialize(request, protocolVersion)
             JsonRpcMethods.NOTIFICATIONS_INITIALIZED -> null
             JsonRpcMethods.TOOLS_LIST -> processToolsList(request)
-            JsonRpcMethods.TOOLS_CALL -> processToolCall(request)
+            JsonRpcMethods.TOOLS_CALL -> processToolCall(request, repoScope)
             JsonRpcMethods.PING -> processPing(request)
             else -> createErrorResponse(request.id, JsonRpcErrorCodes.METHOD_NOT_FOUND, ErrorMessages.methodNotFound(request.method))
         }
@@ -106,7 +111,7 @@ class JsonRpcHandler @JvmOverloads constructor(
         )
     }
 
-    private suspend fun processToolCall(request: JsonRpcRequest): JsonRpcResponse {
+    private suspend fun processToolCall(request: JsonRpcRequest, repoScope: RepoScopeContext?): JsonRpcResponse {
         val params = request.params
             ?: return createErrorResponse(request.id, JsonRpcErrorCodes.INVALID_PARAMS, ErrorMessages.MISSING_PARAMS)
 
@@ -118,10 +123,15 @@ class JsonRpcHandler @JvmOverloads constructor(
         val tool = toolRegistry.getTool(toolName)
             ?: return createErrorResponse(request.id, JsonRpcErrorCodes.METHOD_NOT_FOUND, ErrorMessages.toolNotFound(toolName))
 
-        // Extract optional project_path from arguments
-        val projectPath = arguments[ParamNames.PROJECT_PATH]?.jsonPrimitive?.contentOrNull
+        val effectiveArguments = resolveEffectiveArguments(arguments, repoScope)
+            ?: return JsonRpcResponse(
+                id = request.id,
+                result = json.encodeToJsonElement(createRepoScopeConflictResult(arguments, repoScope!!))
+            )
 
-        val projectResult = projectResolver.resolve(projectPath)
+        val projectPath = effectiveArguments[ParamNames.PROJECT_PATH]?.jsonPrimitive?.contentOrNull
+
+        val projectResult = resolveProject(projectPath)
         if (projectResult.isError) {
             return JsonRpcResponse(
                 id = request.id,
@@ -134,7 +144,7 @@ class JsonRpcHandler @JvmOverloads constructor(
         // Record command in history
         val commandEntry = CommandEntry(
             toolName = toolName,
-            parameters = arguments
+            parameters = effectiveArguments
         )
 
         recordHistorySafely(project, commandEntry)
@@ -142,7 +152,7 @@ class JsonRpcHandler @JvmOverloads constructor(
         val startTime = System.currentTimeMillis()
 
         return try {
-            val result = tool.execute(project, arguments)
+            val result = tool.execute(project, effectiveArguments)
             val duration = System.currentTimeMillis() - startTime
 
             // Update history
@@ -185,6 +195,49 @@ class JsonRpcHandler @JvmOverloads constructor(
                 )
             )
         }
+    }
+
+    private fun resolveEffectiveArguments(arguments: JsonObject, repoScope: RepoScopeContext?): JsonObject? {
+        if (repoScope == null) {
+            return arguments
+        }
+
+        val providedProjectPath = arguments[ParamNames.PROJECT_PATH]?.jsonPrimitive?.contentOrNull
+            ?: return arguments.withProjectPath(repoScope.gitRootPath)
+
+        return if (ProjectResolver.normalizePath(providedProjectPath) == repoScope.normalizedGitRootPath) {
+            arguments.withProjectPath(repoScope.gitRootPath)
+        } else {
+            null
+        }
+    }
+
+    private fun createRepoScopeConflictResult(
+        arguments: JsonObject,
+        repoScope: RepoScopeContext
+    ): ToolCallResult {
+        val providedProjectPath = arguments[ParamNames.PROJECT_PATH]?.jsonPrimitive?.contentOrNull.orEmpty()
+        return buildStructuredErrorResult(
+            payload = buildJsonObject {
+                put("error", ErrorMessages.ERROR_REPO_SCOPE_CONFLICT)
+                put(
+                    "message",
+                    ErrorMessages.repoScopeConflict(
+                        repoId = repoScope.repoId,
+                        expectedProjectPath = repoScope.gitRootPath,
+                        providedProjectPath = providedProjectPath
+                    )
+                )
+                put("repo_id", repoScope.repoId)
+                put("expected_project_path", repoScope.gitRootPath)
+                put("provided_project_path", providedProjectPath)
+            }
+        )
+    }
+
+    private fun JsonObject.withProjectPath(projectPath: String): JsonObject = buildJsonObject {
+        this@withProjectPath.forEach { (key, value) -> put(key, value) }
+        put(ParamNames.PROJECT_PATH, JsonPrimitive(projectPath))
     }
 
     private fun recordHistorySafely(project: Project, commandEntry: CommandEntry) {

@@ -6,12 +6,16 @@ import com.github.hechtcarmel.jetbrainsindexmcpplugin.constants.ParamNames
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.models.JsonRpcErrorCodes
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.models.JsonRpcRequest
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.models.JsonRpcResponse
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.McpTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolRegistry
+import com.intellij.openapi.project.Project
 import junit.framework.TestCase
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -192,4 +196,128 @@ class JsonRpcHandlerUnitTest : TestCase() {
 
         assertNull("Notification should return null (no response)", responseJson)
     }
+
+    fun testRepoScopedToolCallInjectsPinnedProjectPathWhenMissing() = runBlocking {
+        val expectedRoot = "C:/repos/repo-a"
+        var resolvedProjectPath: String? = null
+        val handler = createHandlerWithResolver { projectPath ->
+            resolvedProjectPath = projectPath
+            resolverFailure("resolver_invoked", "resolver invoked")
+        }
+
+        val response = invokeRepoScopedToolCall(
+            handler = handler,
+            arguments = buildJsonObject { },
+            repoScope = RepoScopeContext(repoId = "repo-a", gitRootPath = expectedRoot)
+        )
+
+        assertNull(response.error)
+        assertEquals(expectedRoot, resolvedProjectPath)
+        assertEquals("resolver_invoked", parseStructuredToolError(response)["error"]?.jsonPrimitive?.content)
+    }
+
+    fun testRepoScopedToolCallAllowsMatchingProjectPath() = runBlocking {
+        var resolvedProjectPath: String? = null
+        val handler = createHandlerWithResolver { projectPath ->
+            resolvedProjectPath = projectPath
+            resolverFailure("resolver_invoked", "resolver invoked")
+        }
+
+        val response = invokeRepoScopedToolCall(
+            handler = handler,
+            arguments = buildJsonObject {
+                put(ParamNames.PROJECT_PATH, "C:\\repos\\repo-a\\")
+            },
+            repoScope = RepoScopeContext(repoId = "repo-a", gitRootPath = "C:/repos/repo-a")
+        )
+
+        assertNull(response.error)
+        assertEquals("C:/repos/repo-a", resolvedProjectPath)
+        assertEquals("resolver_invoked", parseStructuredToolError(response)["error"]?.jsonPrimitive?.content)
+    }
+
+    fun testRepoScopedToolCallRejectsConflictingProjectPath() = runBlocking {
+        val handler = createHandlerWithResolver { projectPath ->
+            fail("Resolver should not be called for conflicting project_path: $projectPath")
+            resolverFailure("unexpected", "unexpected")
+        }
+
+        val response = invokeRepoScopedToolCall(
+            handler = handler,
+            arguments = buildJsonObject {
+                put(ParamNames.PROJECT_PATH, "C:/repos/repo-b")
+            },
+            repoScope = RepoScopeContext(repoId = "repo-a", gitRootPath = "C:/repos/repo-a")
+        )
+
+        assertNull(response.error)
+
+        val errorJson = parseStructuredToolError(response)
+        assertEquals("repo_scope_conflict", errorJson["error"]?.jsonPrimitive?.content)
+        assertEquals("repo-a", errorJson["repo_id"]?.jsonPrimitive?.content)
+        assertEquals("C:/repos/repo-a", errorJson["expected_project_path"]?.jsonPrimitive?.content)
+        assertEquals("C:/repos/repo-b", errorJson["provided_project_path"]?.jsonPrimitive?.content)
+    }
+
+    private suspend fun invokeRepoScopedToolCall(
+        handler: JsonRpcHandler,
+        arguments: JsonObject,
+        repoScope: RepoScopeContext
+    ): JsonRpcResponse {
+        val request = JsonRpcRequest(
+            id = JsonPrimitive(9),
+            method = JsonRpcMethods.TOOLS_CALL,
+            params = buildJsonObject {
+                put(ParamNames.NAME, "test_tool")
+                put(ParamNames.ARGUMENTS, arguments)
+            }
+        )
+
+        val responseJson = handler.handleRequest(
+            json.encodeToString(JsonRpcRequest.serializer(), request),
+            protocolVersion = McpConstants.MCP_PROTOCOL_VERSION,
+            repoScope = repoScope
+        )
+
+        return json.decodeFromString<JsonRpcResponse>(responseJson!!)
+    }
+
+    private fun createHandlerWithResolver(resolveProject: (String?) -> ProjectResolver.Result): JsonRpcHandler {
+        val localRegistry = ToolRegistry().also { it.register(fakeTool()) }
+        return JsonRpcHandler(
+            toolRegistry = localRegistry,
+            resolveProject = resolveProject
+        )
+    }
+
+    private fun fakeTool() = object : McpTool {
+        override val name: String = "test_tool"
+        override val description: String = "Test tool"
+        override val inputSchema: JsonObject = buildJsonObject { }
+
+        override suspend fun execute(project: Project, arguments: JsonObject) =
+            error("Test tool execution should not be reached in repo scope unit tests")
+    }
+
+    private fun resolverFailure(errorCode: String, message: String): ProjectResolver.Result =
+        ProjectResolver.Result(
+            isError = true,
+            errorResult = buildStructuredErrorResult(
+                buildJsonObject {
+                    put("error", errorCode)
+                    put("message", message)
+                }
+            )
+        )
+
+    private fun parseStructuredToolError(response: JsonRpcResponse) =
+        json.parseToJsonElement(
+            response.result!!
+                .jsonObject["content"]!!
+                .jsonArray
+                .first()
+                .jsonObject["text"]!!
+                .jsonPrimitive
+                .content
+        ).jsonObject
 }
