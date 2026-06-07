@@ -497,8 +497,8 @@ abstract class AbstractMcpTool : McpTool {
      * excluded from the search scope, derived from the optional `includeGenerated` argument.
      *
      * Each tool passes its own [default] for `includeGenerated` so behavior is per-tool:
-     * `ide_find_references` defaults to excluding generated code (it dominates reference
-     * results on injected symbols), while search and hierarchy tools default to including it.
+     * reference and hierarchy tools include generated sources by default, while name and
+     * implementation searches exclude them by default.
      *
      * @return true when generated sources should be excluded from the resolved scope.
      */

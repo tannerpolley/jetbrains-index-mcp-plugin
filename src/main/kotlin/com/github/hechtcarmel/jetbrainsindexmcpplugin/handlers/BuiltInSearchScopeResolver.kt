@@ -27,11 +27,10 @@ internal object BuiltInSearchScopeResolver {
      * results — especially `ide_find_references` on heavily-injected symbols — focused on
      * hand-written code instead of paginating through hundreds of generated DI factories.
      *
-     * The default is false (include generated): each tool decides its own default and
-     * exposes an `includeGenerated` parameter, so the shared resolver never silently drops
-     * generated sources unless a caller opts in. `ide_find_references` defaults to excluding;
-     * search and hierarchy tools default to including (e.g. so a type hierarchy still shows a
-     * generated supertype).
+     * The default is false (include generated): each tool decides its own default through
+     * `includeGenerated`, so the shared resolver never silently drops generated sources.
+     * Reference and hierarchy tools include generated sources by default; name and
+     * implementation searches opt in to excluding them by default.
      */
     fun resolveGlobalScope(
         project: Project,

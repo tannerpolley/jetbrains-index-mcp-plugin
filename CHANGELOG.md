@@ -3,13 +3,10 @@
 # IDE Index MCP Server Changelog
 
 ## [Unreleased]
-### Added
-- `includeGenerated` parameter for `ide_find_references`, `ide_find_symbol`, `ide_find_class`, `ide_find_file`, `ide_type_hierarchy`, `ide_call_hierarchy`, and `ide_find_implementations`, controlling whether IDE-recognized generated sources (KSP/Dagger/annotation-processor output) are included in results.
 
-### Changed
-- Generated-source filtering is now per-tool via `includeGenerated`. `ide_find_references`, `ide_type_hierarchy`, and `ide_call_hierarchy` default to `includeGenerated: true` so valid runtime references and inherited generated types (Dagger/MapStruct/gRPC/serializers) aren't missed. `ide_find_symbol`, `ide_find_class`, `ide_find_file`, and `ide_find_implementations` default to `includeGenerated: false` to keep generated DI factories/mappers/stubs out of name- and implementation-search results. The shared search-scope resolver no longer excludes generated sources unless a caller opts in.
-### Fixed
-- Fixed `ide_file_structure` for Lombok/augmented Java classes by skipping generated PSI members without real source offsets. Fixes [#201](https://github.com/hechtcarmel/jetbrains-index-mcp-plugin/issues/201).
+## [4.20.0] - 2026-06-07
+### Added
+- Added `includeGenerated` controls so generated code can be included when it matters and filtered when it adds noise.
 
 ## [4.19.3] - 2026-06-05
 ### Fixed
