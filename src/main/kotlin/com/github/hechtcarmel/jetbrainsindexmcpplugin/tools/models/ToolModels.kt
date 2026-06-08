@@ -216,7 +216,17 @@ data class DetachRepoFromWorkspaceResult(
 data class GetRepoScopedClientConfigResult(
     val broadServerName: String,
     val broadStreamableHttpUrl: String,
+    val scopedServers: List<RepoScopedClientConfig>,
     val codexCommands: List<String>
+)
+
+@Serializable
+data class RepoScopedClientConfig(
+    val repoId: String,
+    val repoPath: String,
+    val serverName: String,
+    val streamableHttpUrl: String,
+    val codexCommand: String
 )
 
 // ide_build_project output

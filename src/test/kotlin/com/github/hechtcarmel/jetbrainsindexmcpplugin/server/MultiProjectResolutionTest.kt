@@ -13,6 +13,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -144,6 +145,52 @@ class MultiProjectResolutionTest : BasePlatformTestCase() {
         val detachJson = json.parseToJsonElement(detachResult.text()).jsonObject
         assertEquals("true", detachJson["detached"]?.jsonPrimitive?.content)
         assertFalse("Detach should remove repo root from workspace content roots", ProjectUtils.getModuleContentRoots(project).contains(repoRoot.path.replace('\\', '/')))
+    }
+
+    fun testRepoScopedClientConfigReflectsAttachAndDetach() = runBlocking {
+        val repoRoot = Files.createTempDirectory("repo-config").resolve("billing-api").toFile()
+        assertTrue("Fixture repo root should be created", repoRoot.mkdirs() || repoRoot.isDirectory)
+        val repoPath = repoRoot.path.replace('\\', '/')
+
+        val attachResult = callTool(
+            ToolNames.ATTACH_REPO_TO_WORKSPACE,
+            buildJsonObject {
+                put(ParamNames.REPO_PATH, repoPath)
+            }
+        )
+        assertFalse("Attach should succeed", attachResult.isError)
+
+        val configResult = callTool(ToolNames.GET_REPO_SCOPED_CLIENT_CONFIG, buildJsonObject { })
+        assertFalse("Config export should succeed", configResult.isError)
+
+        val configJson = json.parseToJsonElement(configResult.text()).jsonObject
+        assertEquals("intellij-index", configJson["broadServerName"]?.jsonPrimitive?.content)
+        assertTrue(
+            "Broad URL should use streamable HTTP",
+            configJson["broadStreamableHttpUrl"]?.jsonPrimitive?.content?.endsWith("/index-mcp/streamable-http") == true
+        )
+        val scopedServers = configJson["scopedServers"]!!.jsonArray.map { it.jsonObject }
+        val billingServer = scopedServers.firstOrNull { it["repoId"]?.jsonPrimitive?.content == "billing-api" }
+        assertNotNull("Config should include attached repo scoped server", billingServer)
+        assertEquals(repoPath, billingServer!!["repoPath"]?.jsonPrimitive?.content)
+        assertEquals("intellij-index-billing-api", billingServer["serverName"]?.jsonPrimitive?.content)
+        assertTrue(
+            "Scoped URL should include repo route",
+            billingServer["streamableHttpUrl"]?.jsonPrimitive?.content?.endsWith("/index-mcp/repos/billing-api/streamable-http") == true
+        )
+
+        val detachResult = callTool(
+            ToolNames.DETACH_REPO_FROM_WORKSPACE,
+            buildJsonObject {
+                put(ParamNames.REPO_ID, "billing-api")
+            }
+        )
+        assertFalse("Detach should succeed", detachResult.isError)
+
+        val refreshedConfig = callTool(ToolNames.GET_REPO_SCOPED_CLIENT_CONFIG, buildJsonObject { })
+        val refreshedJson = json.parseToJsonElement(refreshedConfig.text()).jsonObject
+        val refreshedServers = refreshedJson["scopedServers"]!!.jsonArray.map { it.jsonObject }
+        assertFalse("Detached repo should disappear from client config", refreshedServers.any { it["repoId"]?.jsonPrimitive?.content == "billing-api" })
     }
 
     private suspend fun callTool(toolName: String, arguments: kotlinx.serialization.json.JsonObject): ToolCallResult {
