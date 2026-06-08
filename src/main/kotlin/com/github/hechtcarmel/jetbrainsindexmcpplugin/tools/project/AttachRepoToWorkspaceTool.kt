@@ -3,6 +3,7 @@ package com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.constants.ParamNames
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.constants.ToolNames
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.RepoScopeRegistry
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.WorkspaceRepoManager
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.models.ToolCallResult
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.AbstractMcpTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.models.AttachRepoToWorkspaceResult
@@ -25,7 +26,12 @@ class AttachRepoToWorkspaceTool : AbstractMcpTool() {
     override suspend fun doExecute(project: Project, arguments: JsonObject): ToolCallResult {
         val repoPath = requiredStringArg(arguments, ParamNames.REPO_PATH)
             .getOrElse { return createErrorResult(it.message ?: "Missing required parameter: ${ParamNames.REPO_PATH}") }
-        val entry = RepoScopeRegistry.getInstance().attach(repoPath)
+        val attachedPath = try {
+            WorkspaceRepoManager.attachContentRoot(project, repoPath)
+        } catch (e: Exception) {
+            return createErrorResult(e.message ?: "Failed to attach repository to workspace.")
+        }
+        val entry = RepoScopeRegistry.getInstance().attach(attachedPath)
         return createJsonResult(
             AttachRepoToWorkspaceResult(
                 repoId = entry.repoId,

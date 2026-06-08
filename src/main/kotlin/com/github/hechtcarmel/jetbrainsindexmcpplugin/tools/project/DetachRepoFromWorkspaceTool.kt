@@ -3,6 +3,7 @@ package com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.constants.ParamNames
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.constants.ToolNames
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.RepoScopeRegistry
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.WorkspaceRepoManager
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.models.ToolCallResult
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.AbstractMcpTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.models.DetachRepoFromWorkspaceResult
@@ -25,11 +26,13 @@ class DetachRepoFromWorkspaceTool : AbstractMcpTool() {
     override suspend fun doExecute(project: Project, arguments: JsonObject): ToolCallResult {
         val repoId = requiredStringArg(arguments, ParamNames.REPO_ID)
             .getOrElse { return createErrorResult(it.message ?: "Missing required parameter: ${ParamNames.REPO_ID}") }
-        val detached = RepoScopeRegistry.getInstance().detach(repoId)
+        val entry = RepoScopeRegistry.getInstance().find(repoId)
+        val workspaceDetached = entry?.let { WorkspaceRepoManager.detachContentRoot(project, it.rootPath) } ?: false
+        val registryDetached = RepoScopeRegistry.getInstance().detach(repoId)
         return createJsonResult(
             DetachRepoFromWorkspaceResult(
                 repoId = repoId,
-                detached = detached
+                detached = workspaceDetached || registryDetached
             )
         )
     }
