@@ -588,4 +588,21 @@ class ClientConfigGeneratorUnitTest : TestCase() {
             command
         )
     }
+
+    fun testRepoScopedCommandMatchesDerivedScopedNameAndUrl() {
+        val broadUrl = "http://127.0.0.1:29170/index-mcp/streamable-http"
+        val scopedName = ClientConfigGenerator.buildRepoScopedServerName("intellij-index", "billing-api")
+        val scopedUrl = ClientConfigGenerator.buildRepoScopedStreamableHttpUrl(broadUrl, "billing-api")
+
+        assertEquals("intellij-index-billing-api", scopedName)
+        assertEquals("http://127.0.0.1:29170/index-mcp/repos/billing-api/streamable-http", scopedUrl)
+        assertEquals(
+            ClientConfigGenerator.buildCodexCommand(serverUrl = scopedUrl, serverName = scopedName),
+            ClientConfigGenerator.buildRepoScopedCodexCommand(
+                broadStreamableHttpUrl = broadUrl,
+                baseServerName = "intellij-index",
+                repoId = "billing-api"
+            )
+        )
+    }
 }
