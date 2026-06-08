@@ -553,4 +553,39 @@ class ClientConfigGeneratorUnitTest : TestCase() {
         assertFalse("Should not use mcp-remote", command.contains("mcp-remote"))
         assertFalse("Should not use npx", command.contains("npx"))
     }
+
+    fun testBuildRepoScopedServerNameAppendsRepoId() {
+        assertEquals(
+            "intellij-index-localhost-ports-dashboard",
+            ClientConfigGenerator.buildRepoScopedServerName(
+                baseServerName = "intellij-index",
+                repoId = "localhost-ports-dashboard"
+            )
+        )
+    }
+
+    fun testBuildRepoScopedStreamableHttpUrlUsesRepoRoute() {
+        assertEquals(
+            "http://127.0.0.1:29170/index-mcp/repos/localhost-ports-dashboard/streamable-http",
+            ClientConfigGenerator.buildRepoScopedStreamableHttpUrl(
+                broadStreamableHttpUrl = "http://127.0.0.1:29170/index-mcp/streamable-http",
+                repoId = "localhost-ports-dashboard"
+            )
+        )
+    }
+
+    fun testBuildRepoScopedCodexCommandUsesScopedNameAndUrl() {
+        val command = ClientConfigGenerator.buildRepoScopedCodexCommand(
+            broadStreamableHttpUrl = "http://127.0.0.1:29170/index-mcp/streamable-http",
+            baseServerName = "intellij-index",
+            repoId = "localhost-ports-dashboard"
+        )
+
+        assertEquals(
+            "codex mcp remove intellij-index-localhost-ports-dashboard >/dev/null 2>&1 ; " +
+                "codex mcp add intellij-index-localhost-ports-dashboard --url " +
+                "http://127.0.0.1:29170/index-mcp/repos/localhost-ports-dashboard/streamable-http",
+            command
+        )
+    }
 }
