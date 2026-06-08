@@ -35,6 +35,8 @@ object ClientConfigGenerator {
             }
     }
 
+    fun getStreamableHttpUrl(): String = getStreamableHttpUrlOrDefault()
+
     /**
      * Gets the legacy SSE server URL, using the running server URL if available,
      * or constructing a URL from settings if the server is not running.
@@ -219,6 +221,32 @@ object ClientConfigGenerator {
         val addCmd = "codex mcp add $serverName --url $serverUrl"
         return "$removeCmd$separator$addCmd"
     }
+
+    internal fun buildRepoScopedServerName(baseServerName: String, repoId: String): String =
+        "$baseServerName-$repoId"
+
+    internal fun buildRepoScopedStreamableHttpUrl(
+        broadStreamableHttpUrl: String,
+        repoId: String
+    ): String {
+        val broadEndpoint = McpConstants.STREAMABLE_HTTP_ENDPOINT_PATH
+        require(broadStreamableHttpUrl.endsWith(broadEndpoint)) {
+            "Broad Streamable HTTP URL must end with $broadEndpoint"
+        }
+        return broadStreamableHttpUrl.removeSuffix(broadEndpoint) +
+            "${McpConstants.MCP_ENDPOINT_PATH}/repos/$repoId/streamable-http"
+    }
+
+    internal fun buildRepoScopedCodexCommand(
+        broadStreamableHttpUrl: String,
+        baseServerName: String,
+        repoId: String,
+        platform: CommandPlatform = CommandPlatform.POSIX
+    ): String = buildCodexCommand(
+        serverUrl = buildRepoScopedStreamableHttpUrl(broadStreamableHttpUrl, repoId),
+        serverName = buildRepoScopedServerName(baseServerName, repoId),
+        platform = platform
+    )
 
     private fun generateCodexConfig(
         serverUrl: String,

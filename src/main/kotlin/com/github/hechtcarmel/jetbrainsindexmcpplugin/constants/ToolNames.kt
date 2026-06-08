@@ -22,6 +22,9 @@ object ToolNames {
     const val INDEX_STATUS = "ide_index_status"
     const val SYNC_FILES = "ide_sync_files"
     const val BUILD_PROJECT = "ide_build_project"
+    const val ATTACH_REPO_TO_WORKSPACE = "ide_attach_repo_to_workspace"
+    const val DETACH_REPO_FROM_WORKSPACE = "ide_detach_repo_from_workspace"
+    const val GET_REPO_SCOPED_CLIENT_CONFIG = "ide_get_repo_scoped_client_config"
 
     // Refactoring tools
     const val REFACTOR_RENAME = "ide_refactor_rename"
@@ -40,9 +43,11 @@ object ToolNames {
      * Keep this list in sync when adding or removing tool name constants.
      */
     val ALL: List<String> = listOf(
+        ATTACH_REPO_TO_WORKSPACE,
         BUILD_PROJECT,
         CALL_HIERARCHY,
         CONVERT_JAVA_TO_KOTLIN,
+        DETACH_REPO_FROM_WORKSPACE,
         DIAGNOSTICS,
         FILE_STRUCTURE,
         FIND_CLASS,
@@ -53,6 +58,7 @@ object ToolNames {
         FIND_SUPER_METHODS,
         FIND_SYMBOL,
         GET_ACTIVE_FILE,
+        GET_REPO_SCOPED_CLIENT_CONFIG,
         INDEX_STATUS,
         REFACTOR_MOVE,
         OPEN_FILE,

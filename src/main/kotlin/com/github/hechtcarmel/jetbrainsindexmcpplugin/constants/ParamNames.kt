@@ -3,6 +3,8 @@ package com.github.hechtcarmel.jetbrainsindexmcpplugin.constants
 object ParamNames {
     // Common parameters
     const val PROJECT_PATH = "project_path"
+    const val REPO_PATH = "repo_path"
+    const val REPO_ID = "repo_id"
     const val FILE = "file"
     const val LINE = "line"
     const val COLUMN = "column"

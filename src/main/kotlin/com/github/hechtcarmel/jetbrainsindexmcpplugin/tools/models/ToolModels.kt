@@ -200,6 +200,25 @@ data class SyncFilesResult(
     val message: String
 )
 
+@Serializable
+data class AttachRepoToWorkspaceResult(
+    val repoId: String,
+    val repoPath: String
+)
+
+@Serializable
+data class DetachRepoFromWorkspaceResult(
+    val repoId: String,
+    val detached: Boolean
+)
+
+@Serializable
+data class GetRepoScopedClientConfigResult(
+    val broadServerName: String,
+    val broadStreamableHttpUrl: String,
+    val codexCommands: List<String>
+)
+
 // ide_build_project output
 @Serializable
 data class BuildMessage(
