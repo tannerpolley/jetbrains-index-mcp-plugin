@@ -162,6 +162,47 @@ codex mcp add webstorm-index --url http://127.0.0.1:29173/index-mcp/streamable-h
 
 To remove: `codex mcp remove <server-name>` (e.g., `codex mcp remove intellij-index`)
 
+### Repo-Scoped Workspace Servers
+
+For a workspace-style IDE window that contains multiple attached repository roots, use the normal broad server first, then attach each repository root that should have its own MCP endpoint:
+
+```json
+{
+  "method": "tools/call",
+  "params": {
+    "name": "ide_attach_repo_to_workspace",
+    "arguments": {
+      "repo_path": "/Users/dev/workspace/services/billing-api"
+    }
+  }
+}
+```
+
+The response includes a deterministic `repoId` and normalized `repoPath`. The repo id is the repository folder name when unique; if two attached roots share the same folder name, the id is suffixed with an 8-character path hash.
+
+Call `ide_get_repo_scoped_client_config` to export the broad server plus every attached repo-scoped server:
+
+```json
+{
+  "broadServerName": "intellij-index",
+  "broadStreamableHttpUrl": "http://127.0.0.1:29170/index-mcp/streamable-http",
+  "scopedServers": [
+    {
+      "repoId": "billing-api",
+      "repoPath": "/Users/dev/workspace/services/billing-api",
+      "serverName": "intellij-index-billing-api",
+      "streamableHttpUrl": "http://127.0.0.1:29170/index-mcp/repos/billing-api/streamable-http",
+      "codexCommand": "codex mcp remove intellij-index-billing-api 2>/dev/null; codex mcp add intellij-index-billing-api --url http://127.0.0.1:29170/index-mcp/repos/billing-api/streamable-http"
+    }
+  ],
+  "codexCommands": [
+    "codex mcp remove intellij-index-billing-api 2>/dev/null; codex mcp add intellij-index-billing-api --url http://127.0.0.1:29170/index-mcp/repos/billing-api/streamable-http"
+  ]
+}
+```
+
+Register the scoped server URL when an agent should operate inside one repository while the IDE keeps the wider workspace open. Calls through `/index-mcp/repos/{repoId}/streamable-http` inject that repo root as `project_path`; conflicting `project_path` arguments are rejected. To remove the content root and route, call `ide_detach_repo_from_workspace` with the published `repo_id`.
+
 ### Cursor
 
 Add to `.cursor/mcp.json` in your project root or `~/.cursor/mcp.json` globally (adjust name and port for your IDE):
@@ -225,7 +266,7 @@ Each JetBrains IDE has a unique default port and server name to allow running mu
 
 ## Available Tools
 
-The plugin provides **21 MCP tools** organized by availability. Tools marked *(disabled by default)* can be enabled in <kbd>Settings</kbd> > <kbd>Tools</kbd> > <kbd>Index MCP Server</kbd>.
+The plugin provides **24 MCP tools** organized by availability. Tools marked *(disabled by default)* can be enabled in <kbd>Settings</kbd> > <kbd>Tools</kbd> > <kbd>Index MCP Server</kbd>.
 
 ### Universal Tools
 
@@ -242,6 +283,9 @@ These tools work in all supported JetBrains IDEs.
 | `ide_diagnostics` | Analyze file problems with fresh editor diagnostics for open files or public batch diagnostics for closed files, plus optional build/test results; intentions are best-effort |
 | `ide_index_status` | Check if the IDE is in dumb mode or smart mode |
 | `ide_sync_files` | Force sync IDE's virtual file system and PSI cache with external file changes |
+| `ide_attach_repo_to_workspace` | Attach a repository root to the active workspace and publish its repo-scoped MCP route |
+| `ide_detach_repo_from_workspace` | Detach a previously attached repository root and remove its repo-scoped MCP route |
+| `ide_get_repo_scoped_client_config` | Export broad and repo-scoped server metadata plus Codex registration commands |
 | `ide_build_project` | Build project using IDE's build system (JPS, Gradle, Maven) with structured errors *(disabled by default)* |
 | `ide_read_file` | Read file content by path or qualified name, including library/jar sources *(disabled by default)* |
 | `ide_get_active_file` | Get the currently active file(s) in the editor with cursor position *(disabled by default)* |
@@ -279,21 +323,21 @@ PHP file structure support requires the PHP plugin and is available in PhpStorm 
 
 | IDE | Universal | Navigation | Refactoring |
 |-----|-----------|------------|-------------|
-| IntelliJ IDEA | ✓ 14 tools | ✓ 6 tools | ✓ rename + reformat + safe delete + Java→Kotlin |
-| Android Studio | ✓ 14 tools | ✓ 6 tools | ✓ rename + reformat + safe delete + Java→Kotlin |
-| PyCharm | ✓ 14 tools | ✓ 6 tools | ✓ rename + reformat |
-| WebStorm | ✓ 14 tools | ✓ 6 tools | ✓ rename + reformat |
-| GoLand | ✓ 14 tools | ✓ 4 tools | ✓ rename + reformat |
-| RustRover | ✓ 14 tools | ✓ 5 tools | ✓ rename + reformat |
-| PhpStorm | ✓ 14 tools | ✓ 6 tools | ✓ rename + reformat |
+| IntelliJ IDEA | ✓ 17 tools | ✓ 6 tools | ✓ rename + reformat + safe delete + Java→Kotlin |
+| Android Studio | ✓ 17 tools | ✓ 6 tools | ✓ rename + reformat + safe delete + Java→Kotlin |
+| PyCharm | ✓ 17 tools | ✓ 6 tools | ✓ rename + reformat |
+| WebStorm | ✓ 17 tools | ✓ 6 tools | ✓ rename + reformat |
+| GoLand | ✓ 17 tools | ✓ 4 tools | ✓ rename + reformat |
+| RustRover | ✓ 17 tools | ✓ 5 tools | ✓ rename + reformat |
+| PhpStorm | ✓ 17 tools | ✓ 6 tools | ✓ rename + reformat |
 
 **May Work (Untested):**
 
 | IDE | Universal | Navigation | Refactoring |
 |-----|-----------|------------|-------------|
-| RubyMine | ✓ 14 tools | ✓ 2 Markdown tools | ✓ rename + reformat |
-| CLion | ✓ 14 tools | ✓ 2 Markdown tools | ✓ rename + reformat |
-| DataGrip | ✓ 14 tools | ✓ 2 Markdown tools | ✓ rename + reformat |
+| RubyMine | ✓ 17 tools | ✓ 2 Markdown tools | ✓ rename + reformat |
+| CLion | ✓ 17 tools | ✓ 2 Markdown tools | ✓ rename + reformat |
+| DataGrip | ✓ 17 tools | ✓ 2 Markdown tools | ✓ rename + reformat |
 
 > **Note**: Navigation tools activate when language plugins are present. Markdown adds heading search and file-structure support when the bundled Markdown plugin is enabled. Go and Rust do not expose `ide_find_super_methods` due to language semantics, and Go does not expose `ide_find_implementations`. The rename and reformat tools work across all languages. `ide_convert_java_to_kotlin` is available only in IntelliJ IDEA and Android Studio, requires both Java and Kotlin plugins, and is disabled by default.
 
@@ -328,6 +372,16 @@ The plugin supports **workspace projects** where a single IDE window contains mu
 - A **subdirectory** of any open project
 
 When an error occurs, the response returns `available_projects`. By default this includes workspace sub-projects so AI agents can discover valid module content roots. If you want smaller error payloads, switch **Project list in error responses** to **Compact** in plugin settings to return only top-level project roots.
+
+### Repo-Scoped Routes
+
+Attached repository roots are also exposed as repo-scoped Streamable HTTP routes:
+
+```text
+POST /index-mcp/repos/{repoId}/streamable-http
+```
+
+Use these routes when one IDE window hosts a master workspace but a coding agent should resolve relative paths, file searches, reads, opens, and structure requests inside one attached repo. Detaching a repo removes both the workspace content root and the scoped route.
 
 ## Tool Window
 
@@ -422,6 +476,8 @@ AI Assistant ──────► POST /index-mcp/streamable-http (initialize o
              ──────► POST /index-mcp/streamable-http (follow-up requests/notifications)
                      ◄── JSON-RPC response or HTTP 202 Accepted
 ```
+
+Repo-scoped workspace routes use the same Streamable HTTP behavior at `/index-mcp/repos/{repoId}/streamable-http`, with the scoped repository root injected for tool resolution.
 
 The plugin uses stateless Streamable HTTP for the primary MCP transport. It does not
 issue `Mcp-Session-Id` headers, does not require session resumption, and does not

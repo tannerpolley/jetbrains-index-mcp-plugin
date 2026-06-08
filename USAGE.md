@@ -21,6 +21,9 @@ These tools work in every supported JetBrains IDE:
 | `ide_diagnostics` | Analyze file problems with fresh IDE diagnostics, plus optional build/test results | Enabled |
 | `ide_index_status` | Check indexing status | Enabled |
 | `ide_sync_files` | Force sync VFS/PSI cache | Enabled |
+| `ide_attach_repo_to_workspace` | Attach a repo root and publish a repo-scoped route | Enabled |
+| `ide_detach_repo_from_workspace` | Detach a repo root and remove its scoped route | Enabled |
+| `ide_get_repo_scoped_client_config` | Export broad and repo-scoped client registration metadata | Enabled |
 | `ide_build_project` | Build project with structured errors | Disabled |
 | `ide_read_file` | Read file content by path or qualified name | Disabled |
 | `ide_get_active_file` | Get currently active editor file(s) | Disabled |
@@ -63,6 +66,9 @@ These tools activate based on available language plugins:
   - [ide_diagnostics](#ide_diagnostics)
   - [ide_index_status](#ide_index_status)
   - [ide_sync_files](#ide_sync_files)
+  - [ide_attach_repo_to_workspace](#ide_attach_repo_to_workspace)
+  - [ide_detach_repo_from_workspace](#ide_detach_repo_from_workspace)
+  - [ide_get_repo_scoped_client_config](#ide_get_repo_scoped_client_config)
   - [ide_build_project](#ide_build_project)
   - [ide_read_file](#ide_read_file)
   - [ide_get_active_file](#ide_get_active_file)
@@ -91,6 +97,18 @@ All tools accept an optional `project_path` parameter:
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `project_path` | string | No | Absolute path to the project root. Required when multiple projects are open in the IDE. For workspace projects, use the sub-project path. |
+
+Repo-scoped Streamable HTTP routes inject `project_path` automatically from the route repo id. If a scoped request also supplies a different `project_path`, the request is rejected.
+
+### Repo-Scoped Workspace Routes
+
+When one IDE window contains a master workspace plus multiple attached repositories, attach each repository root with `ide_attach_repo_to_workspace`. The tool returns a deterministic `repoId`; use that id in:
+
+```text
+POST /index-mcp/repos/{repoId}/streamable-http
+```
+
+Repo ids use the repository folder name when unique. If two attached roots share the same folder name, the id is suffixed with an 8-character path hash. Use `ide_get_repo_scoped_client_config` to export the broad endpoint plus each scoped endpoint and Codex registration command.
 
 ### Position Parameters
 
@@ -650,6 +668,133 @@ Force the IDE to synchronize its virtual file system and PSI cache with external
   "message": "Synced 1 path(s)"
 }
 ```
+
+---
+
+### ide_attach_repo_to_workspace
+
+Attaches an existing repository root to the active IDE workspace and publishes a repo-scoped MCP route for it.
+
+**Use when:**
+- A coding agent needs a dedicated MCP server for one repository inside a larger IDE workspace
+- Relative paths should resolve from an attached repo root instead of the workspace root
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `repo_path` | string | Yes | Absolute path to the repository root to attach |
+| `project_path` | string | No | Workspace project path when multiple projects are open |
+
+**Example Request:**
+
+```json
+{
+  "method": "tools/call",
+  "params": {
+    "name": "ide_attach_repo_to_workspace",
+    "arguments": {
+      "repo_path": "/Users/dev/workspace/services/billing-api"
+    }
+  }
+}
+```
+
+**Example Response:**
+
+```json
+{
+  "repoId": "billing-api",
+  "repoPath": "/Users/dev/workspace/services/billing-api"
+}
+```
+
+---
+
+### ide_detach_repo_from_workspace
+
+Detaches a repository from the active workspace and removes its repo-scoped MCP route.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `repo_id` | string | Yes | Repo id returned by `ide_attach_repo_to_workspace` or `ide_get_repo_scoped_client_config` |
+| `project_path` | string | No | Workspace project path when multiple projects are open |
+
+**Example Request:**
+
+```json
+{
+  "method": "tools/call",
+  "params": {
+    "name": "ide_detach_repo_from_workspace",
+    "arguments": {
+      "repo_id": "billing-api"
+    }
+  }
+}
+```
+
+**Example Response:**
+
+```json
+{
+  "repoId": "billing-api",
+  "detached": true
+}
+```
+
+---
+
+### ide_get_repo_scoped_client_config
+
+Exports the broad Streamable HTTP endpoint plus every currently attached repo-scoped endpoint.
+
+**Use when:**
+- Registering separate Codex MCP servers for each repository in a workspace
+- Refreshing client configuration after attaching or detaching repositories
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `project_path` | string | No | Workspace project path when multiple projects are open |
+
+**Example Request:**
+
+```json
+{
+  "method": "tools/call",
+  "params": {
+    "name": "ide_get_repo_scoped_client_config",
+    "arguments": {}
+  }
+}
+```
+
+**Example Response:**
+
+```json
+{
+  "broadServerName": "intellij-index",
+  "broadStreamableHttpUrl": "http://127.0.0.1:29170/index-mcp/streamable-http",
+  "scopedServers": [
+    {
+      "repoId": "billing-api",
+      "repoPath": "/Users/dev/workspace/services/billing-api",
+      "serverName": "intellij-index-billing-api",
+      "streamableHttpUrl": "http://127.0.0.1:29170/index-mcp/repos/billing-api/streamable-http",
+      "codexCommand": "codex mcp remove intellij-index-billing-api 2>/dev/null; codex mcp add intellij-index-billing-api --url http://127.0.0.1:29170/index-mcp/repos/billing-api/streamable-http"
+    }
+  ],
+  "codexCommands": [
+    "codex mcp remove intellij-index-billing-api 2>/dev/null; codex mcp add intellij-index-billing-api --url http://127.0.0.1:29170/index-mcp/repos/billing-api/streamable-http"
+  ]
+}
+```
+
+`scopedServers[*].streamableHttpUrl` uses `/index-mcp/repos/{repoId}/streamable-http`. Calls through that route resolve repo-relative file paths and repo-scoped file searches inside the attached root.
 
 ---
 

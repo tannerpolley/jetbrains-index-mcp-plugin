@@ -15,6 +15,8 @@ Complete parameter reference for all IDE MCP tools. All tools use JSON-RPC via M
 
 **Symbol reference:** Some tools accept `language` + `symbol` as an alternative to `file` + `line` + `column`. The two groups are **mutually exclusive**. Supported languages: Java, PHP. Unsupported languages are rejected explicitly; use `file` + `line` + `column` for other languages.
 
+**Repo-scoped routes:** Attached repository roots can be called through `/index-mcp/repos/{repoId}/streamable-http`. The route injects that repo root as `project_path`; requests that supply a conflicting `project_path` are rejected.
+
 ## Response Format
 
 All tools return: `{ "content": [{"type": "text", "text": "<JSON>"}], "isError": false|true }`
@@ -340,6 +342,40 @@ Force sync IDE's virtual file system with external file changes.
 
 **Returns**: `{ syncedPaths, syncedAll, message }`
 Call this when files were created/modified outside the IDE and search tools miss them.
+
+### ide_attach_repo_to_workspace
+Attach a repository root to the active workspace and publish its repo-scoped MCP route.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `repo_path` | string | yes | Absolute path to the repository root to attach |
+| `project_path` | string | no | Workspace project path |
+
+**Returns**: `{ repoId, repoPath }`
+`repoId` is the repository folder name when unique; duplicate folder names get an 8-character path-hash suffix.
+The scoped Streamable HTTP route is `/index-mcp/repos/{repoId}/streamable-http`.
+
+### ide_detach_repo_from_workspace
+Detach a repository root from the active workspace and remove its repo-scoped MCP route.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `repo_id` | string | yes | Repo id returned by `ide_attach_repo_to_workspace` or `ide_get_repo_scoped_client_config` |
+| `project_path` | string | no | Workspace project path |
+
+**Returns**: `{ repoId, detached }`
+
+### ide_get_repo_scoped_client_config
+Export broad-plus-repo-scoped client configuration for currently attached repository roots.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `project_path` | string | no | Workspace project path |
+
+**Returns**: `{ broadServerName, broadStreamableHttpUrl, scopedServers, codexCommands }`
+
+Each `scopedServers` item is `{ repoId, repoPath, serverName, streamableHttpUrl, codexCommand }`.
+Use `streamableHttpUrl` to register an MCP server dedicated to one attached repo while keeping the broader workspace open in the IDE.
 
 ### ide_build_project (disabled by default)
 Build project using IDE's build system (JPS, Gradle, Maven).
