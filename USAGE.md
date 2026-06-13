@@ -22,6 +22,9 @@ These tools work in every supported JetBrains IDE:
 | `ide_index_status` | Check indexing status | Enabled |
 | `ide_sync_files` | Force sync VFS/PSI cache | Enabled |
 | `ide_build_project` | Build project with structured errors | Disabled |
+| `ide_attach_repo_to_workspace` | Attach a repo content root to the active workspace | Enabled |
+| `ide_detach_repo_from_workspace` | Detach a repo content root by repo id | Enabled |
+| `ide_get_repo_scoped_client_config` | Export broad plus repo-scoped Codex registration commands | Enabled |
 | `ide_read_file` | Read file content by path or qualified name | Disabled |
 | `ide_get_active_file` | Get currently active editor file(s) | Disabled |
 | `ide_open_file` | Open file in editor with navigation | Disabled |
@@ -91,6 +94,8 @@ All tools accept an optional `project_path` parameter:
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `project_path` | string | No | Absolute path to the project root. Required when multiple projects are open in the IDE. For workspace projects, use the sub-project path. |
+
+Repo-scoped endpoints under `/index-mcp/repos/<repo-id>/streamable-http` pin `project_path` to the repo root. If a caller provides a path outside that root, the endpoint returns `repo_scope_conflict`.
 
 ### Position Parameters
 
@@ -708,6 +713,77 @@ Build the project using the IDE's build system (supports JPS, Gradle, Maven).
   "durationMs": 3200
 }
 ```
+
+---
+
+### ide_attach_repo_to_workspace
+
+Attach a local Git repo root to the current workspace as a content root and return the repo-scoped MCP identity.
+
+**Use when:**
+- A master IntelliJ workspace is open and an agent needs a repo-local MCP server
+- You want Codex to call `intellij-index-<repo-id>` instead of the broad workspace server
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `repo_path` | string | Yes | Absolute local path to the Git repo root |
+| `project_path` | string | No | Workspace project path when multiple projects are open |
+
+**Example Request:**
+
+```json
+{
+  "method": "tools/call",
+  "params": {
+    "name": "ide_attach_repo_to_workspace",
+    "arguments": {
+      "repo_path": "C:/Users/Tanner/Documents/Workspaces/Projects/example-repo"
+    }
+  }
+}
+```
+
+**Example Response:**
+
+```json
+{
+  "repoId": "example-repo",
+  "repoRootPath": "C:/Users/Tanner/Documents/Workspaces/Projects/example-repo",
+  "workspaceProjectPath": "C:/Users/Tanner/Documents/Workspaces/Workspace",
+  "repoScopedStreamableHttpUrl": "http://127.0.0.1:29170/index-mcp/repos/example-repo/streamable-http",
+  "message": "Attached repo 'C:/Users/Tanner/Documents/Workspaces/Projects/example-repo' as 'intellij-index-example-repo'."
+}
+```
+
+---
+
+### ide_detach_repo_from_workspace
+
+Detach a repo content root from the current workspace by repo id.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `repo_id` | string | Yes | Repo id returned by `ide_attach_repo_to_workspace` |
+| `project_path` | string | No | Workspace project path when multiple projects are open |
+
+---
+
+### ide_get_repo_scoped_client_config
+
+Export Codex commands for the broad index server and every repo-scoped Git repo server currently published by the workspace. Aggregate workspace folders and nested package content roots are omitted unless they have their own `.git` marker.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `client` | string | No | Currently only `codex` |
+| `project_path` | string | No | Workspace project path when multiple projects are open |
+
+Apply the returned commands, then run the bridge-side audit and smoke checks for the new `intellij-index-<repo-id>` server.
 
 ---
 

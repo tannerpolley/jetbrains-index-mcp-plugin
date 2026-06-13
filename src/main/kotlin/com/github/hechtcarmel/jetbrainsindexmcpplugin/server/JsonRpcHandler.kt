@@ -4,6 +4,7 @@ import com.github.hechtcarmel.jetbrainsindexmcpplugin.McpConstants
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.constants.ErrorMessages
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.constants.JsonRpcMethods
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.constants.ParamNames
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.constants.ToolNames
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.history.CommandEntry
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.history.CommandHistoryService
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.history.CommandStatus
@@ -12,6 +13,7 @@ import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolRegistry
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
 import kotlinx.serialization.encodeToString
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.*
 
 class JsonRpcHandler @JvmOverloads constructor(
@@ -35,11 +37,17 @@ class JsonRpcHandler @JvmOverloads constructor(
     }
 
     suspend fun handleRequest(jsonString: String): String? =
-        handleRequest(jsonString, McpConstants.MCP_PROTOCOL_VERSION)
+        handleRequest(jsonString, McpConstants.MCP_PROTOCOL_VERSION, null)
 
     suspend fun handleRequest(
         jsonString: String,
         protocolVersion: String
+    ): String? = handleRequest(jsonString, protocolVersion, null)
+
+    suspend fun handleRequest(
+        jsonString: String,
+        protocolVersion: String,
+        repoScope: RepoScope?
     ): String? {
         val request = try {
             json.decodeFromString<JsonRpcRequest>(jsonString)
@@ -57,7 +65,7 @@ class JsonRpcHandler @JvmOverloads constructor(
         }
 
         val response = try {
-            routeRequest(request, protocolVersion)
+            routeRequest(request, protocolVersion, repoScope)
         } catch (e: Exception) {
             LOG.error("Error processing request: ${request.method}", e)
             createErrorResponse(request.id, JsonRpcErrorCodes.INTERNAL_ERROR, e.message ?: "Unknown error")
@@ -66,12 +74,16 @@ class JsonRpcHandler @JvmOverloads constructor(
         return response?.let { json.encodeToString(response) }
     }
 
-    private suspend fun routeRequest(request: JsonRpcRequest, protocolVersion: String): JsonRpcResponse? {
+    private suspend fun routeRequest(
+        request: JsonRpcRequest,
+        protocolVersion: String,
+        repoScope: RepoScope?
+    ): JsonRpcResponse? {
         return when (request.method) {
             JsonRpcMethods.INITIALIZE -> processInitialize(request, protocolVersion)
             JsonRpcMethods.NOTIFICATIONS_INITIALIZED -> null
             JsonRpcMethods.TOOLS_LIST -> processToolsList(request)
-            JsonRpcMethods.TOOLS_CALL -> processToolCall(request)
+            JsonRpcMethods.TOOLS_CALL -> processToolCall(request, repoScope)
             JsonRpcMethods.PING -> processPing(request)
             else -> createErrorResponse(request.id, JsonRpcErrorCodes.METHOD_NOT_FOUND, ErrorMessages.methodNotFound(request.method))
         }
@@ -106,7 +118,7 @@ class JsonRpcHandler @JvmOverloads constructor(
         )
     }
 
-    private suspend fun processToolCall(request: JsonRpcRequest): JsonRpcResponse {
+    private suspend fun processToolCall(request: JsonRpcRequest, repoScope: RepoScope?): JsonRpcResponse {
         val params = request.params
             ?: return createErrorResponse(request.id, JsonRpcErrorCodes.INVALID_PARAMS, ErrorMessages.MISSING_PARAMS)
 
@@ -118,8 +130,17 @@ class JsonRpcHandler @JvmOverloads constructor(
         val tool = toolRegistry.getTool(toolName)
             ?: return createErrorResponse(request.id, JsonRpcErrorCodes.METHOD_NOT_FOUND, ErrorMessages.toolNotFound(toolName))
 
+        val scopedArguments = resolveRepoScopedArguments(toolName, arguments, repoScope)
+        if (scopedArguments.errorResult != null) {
+            return JsonRpcResponse(
+                id = request.id,
+                result = json.encodeToJsonElement(scopedArguments.errorResult)
+            )
+        }
+        val effectiveArguments = scopedArguments.arguments
+
         // Extract optional project_path from arguments
-        val projectPath = arguments[ParamNames.PROJECT_PATH]?.jsonPrimitive?.contentOrNull
+        val projectPath = effectiveArguments[ParamNames.PROJECT_PATH]?.jsonPrimitive?.contentOrNull
 
         val projectResult = projectResolver.resolve(projectPath)
         if (projectResult.isError) {
@@ -134,7 +155,7 @@ class JsonRpcHandler @JvmOverloads constructor(
         // Record command in history
         val commandEntry = CommandEntry(
             toolName = toolName,
-            parameters = arguments
+            parameters = effectiveArguments
         )
 
         recordHistorySafely(project, commandEntry)
@@ -142,7 +163,9 @@ class JsonRpcHandler @JvmOverloads constructor(
         val startTime = System.currentTimeMillis()
 
         return try {
-            val result = tool.execute(project, arguments)
+            val result = withContext(RepoScopeContext.asContextElement(repoScope)) {
+                tool.execute(project, effectiveArguments)
+            }
             val duration = System.currentTimeMillis() - startTime
 
             // Update history
@@ -187,6 +210,59 @@ class JsonRpcHandler @JvmOverloads constructor(
         }
     }
 
+    private data class ScopedArgumentsResult(
+        val arguments: JsonObject,
+        val errorResult: ToolCallResult? = null
+    )
+
+    private fun resolveRepoScopedArguments(
+        toolName: String,
+        arguments: JsonObject,
+        repoScope: RepoScope?
+    ): ScopedArgumentsResult {
+        if (repoScope == null) {
+            return ScopedArgumentsResult(arguments)
+        }
+
+        if (toolName in repoScopedRejectedToolNames) {
+            return ScopedArgumentsResult(
+                arguments = arguments,
+                errorResult = buildStructuredErrorResult(
+                    payload = buildJsonObject {
+                        put("error", ErrorMessages.ERROR_REPO_SCOPE_TOOL_REJECTED)
+                        put("message", ErrorMessages.msgRepoScopeToolRejected(toolName, repoScope.repoId))
+                        put("repo_id", repoScope.repoId)
+                        put("repo_root", repoScope.repoRootPath)
+                        put("tool", toolName)
+                    }
+                )
+            )
+        }
+
+        val providedProjectPath = arguments[ParamNames.PROJECT_PATH]?.jsonPrimitive?.contentOrNull
+        if (!providedProjectPath.isNullOrBlank() && !RepoScopeRegistry.isPathInsideScope(repoScope, providedProjectPath)) {
+            return ScopedArgumentsResult(
+                arguments = arguments,
+                errorResult = buildStructuredErrorResult(
+                    payload = buildJsonObject {
+                        put("error", ErrorMessages.ERROR_REPO_SCOPE_CONFLICT)
+                        put("message", ErrorMessages.msgRepoScopeConflict(repoScope.repoId, repoScope.repoRootPath, providedProjectPath))
+                        put("repo_id", repoScope.repoId)
+                        put("repo_root", repoScope.repoRootPath)
+                        put("provided_project_path", RepoScopeRegistry.normalizeRepoRootPath(providedProjectPath))
+                    }
+                )
+            )
+        }
+
+        return ScopedArgumentsResult(arguments.withProjectPath(repoScope.repoRootPath))
+    }
+
+    private fun JsonObject.withProjectPath(projectPath: String): JsonObject =
+        JsonObject(toMutableMap().apply {
+            this[ParamNames.PROJECT_PATH] = JsonPrimitive(projectPath)
+        })
+
     private fun recordHistorySafely(project: Project, commandEntry: CommandEntry) {
         try {
             recordHistory(project, commandEntry)
@@ -223,5 +299,13 @@ class JsonRpcHandler @JvmOverloads constructor(
     ) = JsonRpcResponse(
         id = id,
         error = JsonRpcError(code = code, message = message)
+    )
+
+    private val repoScopedRejectedToolNames = setOf(
+        ToolNames.FIND_DEFINITION,
+        ToolNames.FIND_SYMBOL,
+        ToolNames.FIND_IMPLEMENTATIONS,
+        ToolNames.CALL_HIERARCHY,
+        ToolNames.TYPE_HIERARCHY
     )
 }

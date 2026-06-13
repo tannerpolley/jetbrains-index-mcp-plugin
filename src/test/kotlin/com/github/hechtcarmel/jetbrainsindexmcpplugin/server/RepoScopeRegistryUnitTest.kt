@@ -1,0 +1,75 @@
+package com.github.hechtcarmel.jetbrainsindexmcpplugin.server
+
+import junit.framework.TestCase
+
+class RepoScopeRegistryUnitTest : TestCase() {
+
+    fun testUniqueLeafRepoIdsStayReadable() {
+        val scopes = RepoScopeRegistry.buildScopes(
+            repoRootPaths = listOf(
+                "/workspace/projects/alpha",
+                "/workspace/projects/beta"
+            ),
+            workspaceProjectPath = "/workspace/Workspace"
+        )
+
+        assertEquals("alpha", scopes[0].repoId)
+        assertEquals("beta", scopes[1].repoId)
+        assertEquals("/workspace/projects/alpha", scopes[0].repoRootPath)
+        assertEquals("/workspace/Workspace", scopes[0].workspaceProjectPath)
+    }
+
+    fun testDuplicateLeafRepoIdsUseStablePathHash() {
+        val first = "/workspace/projects/service"
+        val second = "/workspace/archive/service"
+
+        val scopes = RepoScopeRegistry.buildScopes(
+            repoRootPaths = listOf(first, second),
+            workspaceProjectPath = "/workspace/Workspace"
+        )
+
+        val firstHash = RepoScopeRegistry.pathHash8(RepoScopeRegistry.normalizeRepoRootPath(first))
+        val secondHash = RepoScopeRegistry.pathHash8(RepoScopeRegistry.normalizeRepoRootPath(second))
+
+        assertEquals("service-$firstHash", scopes[0].repoId)
+        assertEquals("service-$secondHash", scopes[1].repoId)
+        assertTrue("Duplicate leaves must not collide", scopes[0].repoId != scopes[1].repoId)
+    }
+
+    fun testNormalizeRepoRootPathRemovesTrailingSeparatorsAndConvertsBackslashes() {
+        assertEquals(
+            "C:/Users/Tanner/Documents/Workspaces/Projects/jetbrains-bridge",
+            RepoScopeRegistry.normalizeRepoRootPath("C:\\Users\\Tanner\\Documents\\Workspaces\\Projects\\jetbrains-bridge\\")
+        )
+    }
+
+    fun testRepoScopedConflictAllowsRepoRootAndChildrenOnly() {
+        val scope = RepoScope(
+            repoId = "jetbrains-bridge",
+            repoRootPath = "C:/Users/Tanner/Documents/Workspaces/Projects/jetbrains-bridge",
+            workspaceProjectPath = "C:/Users/Tanner/Documents/Workspaces/Workspace"
+        )
+
+        assertTrue(RepoScopeRegistry.isPathInsideScope(scope, "C:/Users/Tanner/Documents/Workspaces/Projects/jetbrains-bridge"))
+        assertTrue(RepoScopeRegistry.isPathInsideScope(scope, "C:/Users/Tanner/Documents/Workspaces/Projects/jetbrains-bridge/scripts"))
+        assertFalse(RepoScopeRegistry.isPathInsideScope(scope, "C:/Users/Tanner/Documents/Workspaces/Projects/other-repo"))
+    }
+
+    fun testAgentRepoRootSelectionSkipsWorkspaceAndNestedPackages() {
+        val candidates = listOf(
+            "C:/Users/Tanner/Documents/Workspaces/Workspace",
+            "C:/Users/Tanner/Documents/Workspaces/Engineering/ePC-SAFT",
+            "C:/Users/Tanner/Documents/Workspaces/Engineering/ePC-SAFT/packages/epcsaft",
+            "C:/Users/Tanner/Documents/Workspaces/Engineering/ePC-SAFT/packages/epcsaft-regression"
+        )
+
+        val selected = RepoScopeRegistry.selectAgentRepoRootPaths(candidates) { path ->
+            path == "C:/Users/Tanner/Documents/Workspaces/Engineering/ePC-SAFT"
+        }
+
+        assertEquals(
+            listOf("C:/Users/Tanner/Documents/Workspaces/Engineering/ePC-SAFT"),
+            selected
+        )
+    }
+}

@@ -19,6 +19,58 @@ internal data class AvailableProjectEntry(
     val workspace: String? = null
 )
 
+internal data class ModuleContentRootEntry(
+    val moduleName: String,
+    val path: String
+)
+
+internal fun buildAvailableProjectEntriesForProject(
+    projectName: String,
+    projectBasePath: String?,
+    contentRoots: List<ModuleContentRootEntry>,
+    includeWorkspaceSubProjects: Boolean,
+    isGitRepoRoot: (String) -> Boolean = RepoScopeRegistry::isGitRepoRootPath
+): List<AvailableProjectEntry> {
+    val normalizedBasePath = projectBasePath
+        ?.let { ProjectResolver.normalizePath(it) }
+        ?.takeIf { it.isNotBlank() }
+    val normalizedContentRoots = contentRoots
+        .map { ModuleContentRootEntry(it.moduleName, ProjectResolver.normalizePath(it.path)) }
+        .filter { it.path.isNotBlank() && it.path != normalizedBasePath }
+        .distinctBy { it.path }
+
+    val gitRootPaths = normalizedContentRoots
+        .map { it.path }
+        .filter { isGitRepoRoot(it) }
+    val repoIdsByRoot = RepoScopeRegistry.buildScopes(gitRootPaths, normalizedBasePath)
+        .associate { it.repoRootPath to it.repoId }
+    val hasGitWorkspaceRoots = repoIdsByRoot.isNotEmpty()
+
+    val entries = mutableListOf<AvailableProjectEntry>()
+    if (normalizedBasePath != null && (!hasGitWorkspaceRoots || isGitRepoRoot(normalizedBasePath))) {
+        entries += AvailableProjectEntry(name = projectName, path = normalizedBasePath)
+    }
+
+    if (!includeWorkspaceSubProjects) {
+        return entries
+    }
+
+    for (root in normalizedContentRoots) {
+        val repoId = repoIdsByRoot[root.path]
+        if (hasGitWorkspaceRoots && repoId == null) {
+            continue
+        }
+
+        entries += AvailableProjectEntry(
+            name = repoId ?: root.moduleName,
+            path = root.path,
+            workspace = projectName
+        )
+    }
+
+    return entries
+}
+
 /**
  * Builds the `available_projects` JSON array from the given entries.
  * When [includeWorkspaceSubProjects] is false, sub-project entries
@@ -198,31 +250,30 @@ object ProjectResolver {
     ): List<AvailableProjectEntry> {
         val entries = mutableListOf<AvailableProjectEntry>()
         for (proj in openProjects) {
-            entries += AvailableProjectEntry(
-                name = proj.name,
-                path = proj.basePath ?: ""
-            )
+            val contentRoots = mutableListOf<ModuleContentRootEntry>()
 
-            if (!includeWorkspaceSubProjects) continue
-
-            try {
-                val modules = ModuleManager.getInstance(proj).modules
-                for (module in modules) {
-                    val contentRoots = ModuleRootManager.getInstance(module).contentRoots
-                    for (root in contentRoots) {
-                        val rootPath = root.path
-                        if (rootPath != proj.basePath) {
-                            entries += AvailableProjectEntry(
-                                name = module.name,
-                                path = rootPath,
-                                workspace = proj.name
+            if (includeWorkspaceSubProjects) {
+                try {
+                    val modules = ModuleManager.getInstance(proj).modules
+                    for (module in modules) {
+                        for (root in ModuleRootManager.getInstance(module).contentRoots) {
+                            contentRoots += ModuleContentRootEntry(
+                                moduleName = module.name,
+                                path = root.path
                             )
                         }
                     }
+                } catch (e: Exception) {
+                    LOG.debug("Failed to list module content roots for project ${proj.name}", e)
                 }
-            } catch (e: Exception) {
-                LOG.debug("Failed to list module content roots for project ${proj.name}", e)
             }
+
+            entries += buildAvailableProjectEntriesForProject(
+                projectName = proj.name,
+                projectBasePath = proj.basePath,
+                contentRoots = contentRoots,
+                includeWorkspaceSubProjects = includeWorkspaceSubProjects
+            )
         }
         return entries
     }

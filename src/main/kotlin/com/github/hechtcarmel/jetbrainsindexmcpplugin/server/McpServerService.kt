@@ -155,6 +155,13 @@ class McpServerService(
     }
 
     /**
+     * Notifies UI listeners that the visible endpoint list may have changed.
+     */
+    fun notifyEndpointListChanged() {
+        notifyStatusChanged()
+    }
+
+    /**
      * Stops the MCP server.
      */
     fun stopServer() {

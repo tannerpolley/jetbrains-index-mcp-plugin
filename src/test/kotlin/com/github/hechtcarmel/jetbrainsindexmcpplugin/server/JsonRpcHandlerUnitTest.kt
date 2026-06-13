@@ -3,9 +3,12 @@ package com.github.hechtcarmel.jetbrainsindexmcpplugin.server
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.McpConstants
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.constants.JsonRpcMethods
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.constants.ParamNames
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.constants.ToolNames
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.models.JsonRpcErrorCodes
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.models.JsonRpcRequest
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.models.JsonRpcResponse
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.models.ContentBlock
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.models.ToolCallResult
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolRegistry
 import junit.framework.TestCase
 import kotlinx.coroutines.runBlocking
@@ -191,5 +194,65 @@ class JsonRpcHandlerUnitTest : TestCase() {
         val responseJson = handler.handleRequest(requestJson)
 
         assertNull("Notification should return null (no response)", responseJson)
+    }
+
+    fun testRepoScopedToolCallRejectsConflictingProjectPath() = runBlocking {
+        val request = JsonRpcRequest(
+            id = JsonPrimitive(9),
+            method = JsonRpcMethods.TOOLS_CALL,
+            params = buildJsonObject {
+                put(ParamNames.NAME, ToolNames.INDEX_STATUS)
+                put(ParamNames.ARGUMENTS, buildJsonObject {
+                    put(ParamNames.PROJECT_PATH, "C:/Users/Tanner/Documents/Workspaces/Projects/other-repo")
+                })
+            }
+        )
+
+        val responseJson = handler.handleRequest(
+            json.encodeToString(JsonRpcRequest.serializer(), request),
+            protocolVersion = McpConstants.MCP_PROTOCOL_VERSION,
+            repoScope = RepoScope(
+                repoId = "jetbrains-bridge",
+                repoRootPath = "C:/Users/Tanner/Documents/Workspaces/Projects/jetbrains-bridge",
+                workspaceProjectPath = "C:/Users/Tanner/Documents/Workspaces/Workspace"
+            )
+        )
+        val response = json.decodeFromString<JsonRpcResponse>(responseJson!!)
+        val result = json.decodeFromJsonElement(ToolCallResult.serializer(), response.result!!)
+        val text = (result.content.single() as ContentBlock.Text).text
+        val payload = json.parseToJsonElement(text).jsonObject
+
+        assertTrue(result.isError)
+        assertEquals("repo_scope_conflict", payload["error"]?.jsonPrimitive?.content)
+        assertEquals("jetbrains-bridge", payload["repo_id"]?.jsonPrimitive?.content)
+    }
+
+    fun testRepoScopedToolCallRejectsHighRiskNavigationTool() = runBlocking {
+        val request = JsonRpcRequest(
+            id = JsonPrimitive(10),
+            method = JsonRpcMethods.TOOLS_CALL,
+            params = buildJsonObject {
+                put(ParamNames.NAME, ToolNames.FIND_DEFINITION)
+                put(ParamNames.ARGUMENTS, buildJsonObject { })
+            }
+        )
+
+        val responseJson = handler.handleRequest(
+            json.encodeToString(JsonRpcRequest.serializer(), request),
+            protocolVersion = McpConstants.MCP_PROTOCOL_VERSION,
+            repoScope = RepoScope(
+                repoId = "jetbrains-bridge",
+                repoRootPath = "C:/Users/Tanner/Documents/Workspaces/Projects/jetbrains-bridge",
+                workspaceProjectPath = "C:/Users/Tanner/Documents/Workspaces/Workspace"
+            )
+        )
+        val response = json.decodeFromString<JsonRpcResponse>(responseJson!!)
+        val result = json.decodeFromJsonElement(ToolCallResult.serializer(), response.result!!)
+        val text = (result.content.single() as ContentBlock.Text).text
+        val payload = json.parseToJsonElement(text).jsonObject
+
+        assertTrue(result.isError)
+        assertEquals("repo_scope_tool_rejected", payload["error"]?.jsonPrimitive?.content)
+        assertEquals(ToolNames.FIND_DEFINITION, payload["tool"]?.jsonPrimitive?.content)
     }
 }

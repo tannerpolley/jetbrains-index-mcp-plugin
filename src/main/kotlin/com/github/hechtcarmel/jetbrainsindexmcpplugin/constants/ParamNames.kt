@@ -37,6 +37,9 @@ object ParamNames {
     const val MAX_RESULTS = "maxResults"
     const val FIX_ID = "fixId"
     const val PATH = "path"
+    const val REPO_PATH = "repo_path"
+    const val REPO_ID = "repo_id"
+    const val CLIENT = "client"
     const val FQN = "fqn"
     const val QUALIFIED_NAME = "qualifiedName"
 

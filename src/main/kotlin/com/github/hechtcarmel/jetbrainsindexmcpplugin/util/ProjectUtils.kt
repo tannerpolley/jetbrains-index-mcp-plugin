@@ -1,5 +1,7 @@
 package com.github.hechtcarmel.jetbrainsindexmcpplugin.util
 
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.RepoScopeContext
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.RepoScopeRegistry
 import com.intellij.openapi.module.ModuleManager
 import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.openapi.project.Project
@@ -10,6 +12,11 @@ import com.intellij.openapi.vfs.VirtualFile
 object ProjectUtils {
 
     fun getRelativePath(project: Project, virtualFile: VirtualFile): String {
+        val repoScope = RepoScopeContext.current()
+        if (repoScope != null && RepoScopeRegistry.isPathInsideScope(repoScope, virtualFile.path)) {
+            return virtualFile.path.removePrefix(repoScope.repoRootPath).removePrefix("/")
+        }
+
         val basePath = project.basePath
         val filePath = virtualFile.path
         if (basePath != null && (filePath == basePath || filePath.startsWith("$basePath/"))) {
@@ -23,6 +30,13 @@ object ProjectUtils {
     }
 
     fun getRelativePath(project: Project, absolutePath: String): String {
+        val repoScope = RepoScopeContext.current()
+        if (repoScope != null && RepoScopeRegistry.isPathInsideScope(repoScope, absolutePath)) {
+            return RepoScopeRegistry.normalizeRepoRootPath(absolutePath)
+                .removePrefix(repoScope.repoRootPath)
+                .removePrefix("/")
+        }
+
         val basePath = project.basePath
         if (basePath != null && (absolutePath == basePath || absolutePath.startsWith("$basePath/"))) {
             return absolutePath.removePrefix(basePath).removePrefix("/")
@@ -35,6 +49,18 @@ object ProjectUtils {
     }
 
     fun resolveProjectFile(project: Project, relativePath: String): VirtualFile? {
+        val repoScope = RepoScopeContext.current()
+        if (repoScope != null) {
+            val normalized = RepoScopeRegistry.normalizeRepoRootPath(relativePath)
+            val fullPath = if (relativePath.startsWith("/") || Regex("^[A-Za-z]:/").containsMatchIn(normalized)) {
+                normalized
+            } else {
+                "${repoScope.repoRootPath}/$relativePath"
+            }
+            if (!RepoScopeRegistry.isPathInsideScope(repoScope, fullPath)) return null
+            return LocalFileSystem.getInstance().findFileByPath(fullPath)
+        }
+
         val basePath = project.basePath ?: return null
         val fullPath = if (relativePath.startsWith("/")) relativePath else "$basePath/$relativePath"
         return LocalFileSystem.getInstance().findFileByPath(fullPath)
@@ -45,6 +71,11 @@ object ProjectUtils {
     }
 
     fun isProjectFile(project: Project, virtualFile: VirtualFile): Boolean {
+        val repoScope = RepoScopeContext.current()
+        if (repoScope != null) {
+            return RepoScopeRegistry.isPathInsideScope(repoScope, virtualFile.path)
+        }
+
         try {
             val fileIndex = ProjectFileIndex.getInstance(project)
             if (fileIndex.isInContent(virtualFile)) return true

@@ -14,8 +14,11 @@ import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.navigation.FindSymbo
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.navigation.FindUsagesTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.navigation.ReadFileTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.navigation.SearchTextTool
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.AttachRepoToWorkspaceTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.BuildProjectTool
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.DetachRepoFromWorkspaceTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.GetIndexStatusTool
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.GetRepoScopedClientConfigTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.SyncFilesTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.refactoring.MoveFileTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.refactoring.OptimizeImportsTool
@@ -235,6 +238,9 @@ class ToolRegistry {
         register(GetIndexStatusTool())
         register(SyncFilesTool())
         register(BuildProjectTool())
+        register(AttachRepoToWorkspaceTool())
+        register(DetachRepoFromWorkspaceTool())
+        register(GetRepoScopedClientConfigTool())
 
         // Refactoring tools (universal - uses platform APIs)
         register(RenameSymbolTool())

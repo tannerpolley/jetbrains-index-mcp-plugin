@@ -189,6 +189,17 @@ class KtorMcpServerUnitTest : TestCase() {
         assertNotNull(responseBody["result"])
     }
 
+    fun testUnknownRepoScopedStreamableRouteReturnsNotFound() {
+        val response = sendRequest(
+            method = "POST",
+            path = McpConstants.repoScopedStreamableHttpEndpointPath("missing-repo"),
+            body = """{"jsonrpc":"2.0","id":1,"method":"ping"}"""
+        )
+
+        assertEquals(HttpStatusCode.NotFound.value, response.statusCode())
+        assertTrue(response.body().contains("missing-repo"))
+    }
+
     fun testRejectsNonLocalOrigin() {
         val response = sendRequest(
             method = "POST",

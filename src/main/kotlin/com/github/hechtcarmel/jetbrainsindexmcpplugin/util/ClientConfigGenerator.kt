@@ -1,6 +1,7 @@
 package com.github.hechtcarmel.jetbrainsindexmcpplugin.util
 
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.McpConstants
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.RepoScope
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.McpServerService
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.settings.McpSettings
 import com.intellij.openapi.util.SystemInfo
@@ -34,6 +35,8 @@ object ClientConfigGenerator {
                 "http://${settings.serverHost}:${settings.serverPort}${McpConstants.STREAMABLE_HTTP_ENDPOINT_PATH}"
             }
     }
+
+    fun getStreamableHttpUrl(): String = getStreamableHttpUrlOrDefault()
 
     /**
      * Gets the legacy SSE server URL, using the running server URL if available,
@@ -120,6 +123,35 @@ object ClientConfigGenerator {
             ClientType.CODEX_CLI -> buildCodexCommand(serverUrl, serverName, platform)
             else -> null
         }
+    }
+
+    fun buildRepoScopedStreamableHttpUrl(
+        broadStreamableHttpUrl: String,
+        repoId: String
+    ): String {
+        val suffix = McpConstants.STREAMABLE_HTTP_ENDPOINT_PATH
+        require(broadStreamableHttpUrl.endsWith(suffix)) {
+            "Broad Streamable HTTP URL must end with $suffix. Got: $broadStreamableHttpUrl"
+        }
+        return broadStreamableHttpUrl.removeSuffix(suffix) +
+            McpConstants.repoScopedStreamableHttpEndpointPath(repoId)
+    }
+
+    fun buildRepoScopedCodexCommands(
+        broadStreamableHttpUrl: String,
+        broadServerName: String = getDefaultServerName(),
+        repoScopes: List<RepoScope>,
+        platform: CommandPlatform = currentCommandPlatform()
+    ): List<String> {
+        val commands = mutableListOf(buildCodexCommand(broadStreamableHttpUrl, broadServerName, platform))
+        for (scope in repoScopes.sortedBy { it.repoId }) {
+            commands += buildCodexCommand(
+                serverUrl = buildRepoScopedStreamableHttpUrl(broadStreamableHttpUrl, scope.repoId),
+                serverName = "$broadServerName-${scope.repoId}",
+                platform = platform
+            )
+        }
+        return commands
     }
 
     /**

@@ -19,7 +19,10 @@ import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.navigation.FindUsage
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.navigation.SearchTextTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.navigation.TypeHierarchyTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.GetIndexStatusTool
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.AttachRepoToWorkspaceTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.BuildProjectTool
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.DetachRepoFromWorkspaceTool
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.GetRepoScopedClientConfigTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.SyncFilesTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.refactoring.MoveFileTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.refactoring.OptimizeImportsTool
@@ -125,6 +128,53 @@ class ToolsUnitTest : TestCase() {
         val tool = registry.getTool(ToolNames.BUILD_PROJECT)
         assertNotNull("ide_build_project should be registered", tool)
         assertEquals(ToolNames.BUILD_PROJECT, tool?.name)
+    }
+
+    fun testAttachRepoToWorkspaceToolSchema() {
+        val tool = AttachRepoToWorkspaceTool()
+
+        assertEquals(ToolNames.ATTACH_REPO_TO_WORKSPACE, tool.name)
+        assertNotNull(tool.description)
+
+        val schema = tool.inputSchema
+        val properties = schema[SchemaConstants.PROPERTIES]?.jsonObject
+        assertNotNull("Should have project_path property", properties?.get(ParamNames.PROJECT_PATH))
+        assertNotNull("Should have repo_path property", properties?.get(ParamNames.REPO_PATH))
+        assertTrue("repo_path should be required", schema[SchemaConstants.REQUIRED].toString().contains(ParamNames.REPO_PATH))
+    }
+
+    fun testDetachRepoFromWorkspaceToolSchema() {
+        val tool = DetachRepoFromWorkspaceTool()
+
+        assertEquals(ToolNames.DETACH_REPO_FROM_WORKSPACE, tool.name)
+        assertNotNull(tool.description)
+
+        val schema = tool.inputSchema
+        val properties = schema[SchemaConstants.PROPERTIES]?.jsonObject
+        assertNotNull("Should have project_path property", properties?.get(ParamNames.PROJECT_PATH))
+        assertNotNull("Should have repo_id property", properties?.get(ParamNames.REPO_ID))
+        assertTrue("repo_id should be required", schema[SchemaConstants.REQUIRED].toString().contains(ParamNames.REPO_ID))
+    }
+
+    fun testGetRepoScopedClientConfigToolSchema() {
+        val tool = GetRepoScopedClientConfigTool()
+
+        assertEquals(ToolNames.GET_REPO_SCOPED_CLIENT_CONFIG, tool.name)
+        assertNotNull(tool.description)
+
+        val schema = tool.inputSchema
+        val properties = schema[SchemaConstants.PROPERTIES]?.jsonObject
+        assertNotNull("Should have project_path property", properties?.get(ParamNames.PROJECT_PATH))
+        assertNotNull("Should have client property", properties?.get(ParamNames.CLIENT))
+    }
+
+    fun testRepoWorkspaceToolsAreRegistered() {
+        val registry = ToolRegistry()
+        registry.registerBuiltInTools()
+
+        assertNotNull("ide_attach_repo_to_workspace should be registered", registry.getTool(ToolNames.ATTACH_REPO_TO_WORKSPACE))
+        assertNotNull("ide_detach_repo_from_workspace should be registered", registry.getTool(ToolNames.DETACH_REPO_FROM_WORKSPACE))
+        assertNotNull("ide_get_repo_scoped_client_config should be registered", registry.getTool(ToolNames.GET_REPO_SCOPED_CLIENT_CONFIG))
     }
 
     fun testFindUsagesToolSchema() {

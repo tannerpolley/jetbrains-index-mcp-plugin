@@ -3,13 +3,16 @@ package com.github.hechtcarmel.jetbrainsindexmcpplugin.ui
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.McpBundle
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.McpConstants
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.ServerStatusListener
-import com.github.hechtcarmel.jetbrainsindexmcpplugin.util.IdeProductInfo
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.history.CommandEntry
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.history.CommandFilter
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.history.CommandHistoryListener
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.history.CommandHistoryService
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.history.CommandStatus
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.McpServerService
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.RepoScopeRegistry
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.util.IdeProductInfo
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.util.RepoEndpointDisplay
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.util.RepoEndpointDisplayRow
 import com.intellij.icons.AllIcons
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
@@ -217,11 +220,20 @@ class ServerStatusPanel(private val project: Project) : JBPanel<ServerStatusPane
     private val urlLabel: JBLabel
     private val projectLabel: JBLabel
     private val settingsLink: JBLabel
+    private val repoEndpointsPanel: JBPanel<JBPanel<*>>
 
     init {
         border = JBUI.Borders.empty(8)
 
-        val leftPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 8, 0))
+        val contentPanel = JBPanel<JBPanel<*>>().apply {
+            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+            isOpaque = false
+        }
+
+        val mainRowPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 8, 0)).apply {
+            isOpaque = false
+            alignmentX = Component.LEFT_ALIGNMENT
+        }
 
         statusLabel = JBLabel().apply {
             icon = null
@@ -252,12 +264,23 @@ class ServerStatusPanel(private val project: Project) : JBPanel<ServerStatusPane
             })
         }
 
-        leftPanel.add(statusLabel)
-        leftPanel.add(urlLabel)
-        leftPanel.add(settingsLink)
-        leftPanel.add(projectLabel)
+        mainRowPanel.add(statusLabel)
+        mainRowPanel.add(urlLabel)
+        mainRowPanel.add(settingsLink)
+        mainRowPanel.add(projectLabel)
 
-        add(leftPanel, BorderLayout.WEST)
+        repoEndpointsPanel = JBPanel<JBPanel<*>>().apply {
+            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+            border = JBUI.Borders.empty(4, 24, 0, 0)
+            isOpaque = false
+            isVisible = false
+            alignmentX = Component.LEFT_ALIGNMENT
+        }
+
+        contentPanel.add(mainRowPanel)
+        contentPanel.add(repoEndpointsPanel)
+
+        add(contentPanel, BorderLayout.CENTER)
 
         refresh()
     }
@@ -272,6 +295,7 @@ class ServerStatusPanel(private val project: Project) : JBPanel<ServerStatusPane
                 urlLabel.text = ""
                 settingsLink.isVisible = false
                 projectLabel.text = ""
+                setRepoEndpointRows(emptyList())
                 return
             }
 
@@ -285,6 +309,7 @@ class ServerStatusPanel(private val project: Project) : JBPanel<ServerStatusPane
                 urlLabel.foreground = JBColor.RED
                 settingsLink.isVisible = true
                 projectLabel.text = ""
+                setRepoEndpointRows(emptyList())
             } else if (mcpService.isServerRunning()) {
                 // Running state
                 val url = mcpService.getServerUrl()
@@ -294,6 +319,14 @@ class ServerStatusPanel(private val project: Project) : JBPanel<ServerStatusPane
                 urlLabel.foreground = JBColor.BLUE
                 settingsLink.isVisible = false
                 projectLabel.text = "| Project: ${project.name}"
+                setRepoEndpointRows(
+                    url?.let {
+                        RepoEndpointDisplay.buildRows(
+                            broadStreamableHttpUrl = it,
+                            repoScopes = RepoScopeRegistry.collectOpenRepoScopes()
+                        )
+                    } ?: emptyList()
+                )
             } else {
                 // Stopped state
                 statusLabel.text = "MCP Server Stopped"
@@ -301,6 +334,7 @@ class ServerStatusPanel(private val project: Project) : JBPanel<ServerStatusPane
                 urlLabel.text = ""
                 settingsLink.isVisible = true
                 projectLabel.text = ""
+                setRepoEndpointRows(emptyList())
             }
         } catch (e: Exception) {
             statusLabel.text = "MCP Server Error"
@@ -309,7 +343,37 @@ class ServerStatusPanel(private val project: Project) : JBPanel<ServerStatusPane
             urlLabel.foreground = JBColor.RED
             settingsLink.isVisible = true
             projectLabel.text = ""
+            setRepoEndpointRows(emptyList())
         }
+    }
+
+    private fun setRepoEndpointRows(rows: List<RepoEndpointDisplayRow>) {
+        repoEndpointsPanel.removeAll()
+        repoEndpointsPanel.isVisible = rows.isNotEmpty()
+
+        rows.forEach { row ->
+            val rowPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 8, 0)).apply {
+                isOpaque = false
+                alignmentX = Component.LEFT_ALIGNMENT
+                toolTipText = row.repoRootPath
+            }
+
+            val endpointLabel = JBLabel(row.url).apply {
+                foreground = JBColor.BLUE
+                toolTipText = row.repoRootPath
+            }
+
+            val repoLabel = JBLabel("| Repo/Module: ${row.repoModuleName}").apply {
+                toolTipText = row.repoRootPath
+            }
+
+            rowPanel.add(endpointLabel)
+            rowPanel.add(repoLabel)
+            repoEndpointsPanel.add(rowPanel)
+        }
+
+        repoEndpointsPanel.revalidate()
+        repoEndpointsPanel.repaint()
     }
 }
 

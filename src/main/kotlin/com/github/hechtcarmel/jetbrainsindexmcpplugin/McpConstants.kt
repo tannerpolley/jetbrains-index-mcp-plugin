@@ -31,6 +31,10 @@ object McpConstants {
     const val STREAMABLE_HTTP_ENDPOINT_PATH = "$MCP_ENDPOINT_PATH/streamable-http"
     const val SESSION_ID_PARAM = "sessionId"
 
+    @JvmStatic
+    fun repoScopedStreamableHttpEndpointPath(repoId: String): String =
+        "$MCP_ENDPOINT_PATH/repos/$repoId/streamable-http"
+
     // JSON-RPC version
     const val JSON_RPC_VERSION = "2.0"
 

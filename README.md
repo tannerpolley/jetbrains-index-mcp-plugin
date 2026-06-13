@@ -225,7 +225,7 @@ Each JetBrains IDE has a unique default port and server name to allow running mu
 
 ## Available Tools
 
-The plugin provides **21 MCP tools** organized by availability. Tools marked *(disabled by default)* can be enabled in <kbd>Settings</kbd> > <kbd>Tools</kbd> > <kbd>Index MCP Server</kbd>.
+The plugin provides **24 MCP tools** organized by availability. Tools marked *(disabled by default)* can be enabled in <kbd>Settings</kbd> > <kbd>Tools</kbd> > <kbd>Index MCP Server</kbd>.
 
 ### Universal Tools
 
@@ -243,6 +243,9 @@ These tools work in all supported JetBrains IDEs.
 | `ide_index_status` | Check if the IDE is in dumb mode or smart mode |
 | `ide_sync_files` | Force sync IDE's virtual file system and PSI cache with external file changes |
 | `ide_build_project` | Build project using IDE's build system (JPS, Gradle, Maven) with structured errors *(disabled by default)* |
+| `ide_attach_repo_to_workspace` | Attach a local repo directory to the current workspace and return its repo-scoped MCP identity |
+| `ide_detach_repo_from_workspace` | Detach an attached repo content root by repo id |
+| `ide_get_repo_scoped_client_config` | Export broad plus repo-scoped Codex MCP registration commands |
 | `ide_read_file` | Read file content by path or qualified name, including library/jar sources *(disabled by default)* |
 | `ide_get_active_file` | Get the currently active file(s) in the editor with cursor position *(disabled by default)* |
 | `ide_open_file` | Open a file in the editor with optional line/column navigation *(disabled by default)* |
@@ -328,6 +331,24 @@ The plugin supports **workspace projects** where a single IDE window contains mu
 - A **subdirectory** of any open project
 
 When an error occurs, the response returns `available_projects`. By default this includes workspace sub-projects so AI agents can discover valid module content roots. If you want smaller error payloads, switch **Project list in error responses** to **Compact** in plugin settings to return only top-level project roots.
+
+### Repo-Scoped Agent Workspaces
+
+For one master workspace with many Git roots, use repo-scoped MCP identities:
+
+1. Call `ide_attach_repo_to_workspace` on the broad server with `repo_path` set to the absolute Git repo root.
+2. Call `ide_get_repo_scoped_client_config` and apply the returned Codex commands.
+3. Use `intellij-index-<repo-id>` for repo-local agent work.
+
+Repo-scoped URLs use:
+
+```text
+/index-mcp/repos/<repo-id>/streamable-http
+```
+
+Only Git repo roots are published as repo-scoped agent identities. Aggregate workspace folders and nested package content roots are omitted unless they have their own `.git` marker. Unique repo directory names keep the leaf name as the repo id. Duplicate leaf names use `-<pathhash8>`, where `pathhash8` is the first 8 lowercase hex characters of `sha256(normalized_canonical_repo_root_path)`.
+
+Repo-scoped endpoints pin `project_path` to the repo root. A conflicting `project_path` returns `repo_scope_conflict`. The currently repo-safe tools are `ide_index_status`, `ide_find_file`, `ide_search_text`, `ide_file_structure`, `ide_read_file`, and `ide_open_file`; `ide_find_definition`, `ide_find_symbol`, `ide_find_implementations`, `ide_call_hierarchy`, and `ide_type_hierarchy` are rejected on repo-scoped endpoints until sub-root semantic scoping is proven.
 
 ## Tool Window
 

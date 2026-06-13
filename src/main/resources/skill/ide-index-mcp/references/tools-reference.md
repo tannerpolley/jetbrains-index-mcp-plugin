@@ -15,6 +15,8 @@ Complete parameter reference for all IDE MCP tools. All tools use JSON-RPC via M
 
 **Symbol reference:** Some tools accept `language` + `symbol` as an alternative to `file` + `line` + `column`. The two groups are **mutually exclusive**. Supported languages: Java, PHP. Unsupported languages are rejected explicitly; use `file` + `line` + `column` for other languages.
 
+**Repo-scoped endpoints:** `/index-mcp/repos/<repo-id>/streamable-http` pins calls to one repo root. Use `ide_attach_repo_to_workspace`, then `ide_get_repo_scoped_client_config`, then register the returned `intellij-index-<repo-id>` server. A conflicting `project_path` returns `repo_scope_conflict`. Repo-scoped endpoints currently allow file/status tools and reject high-risk semantic navigation tools that are not proven sub-root safe.
+
 ## Response Format
 
 All tools return: `{ "content": [{"type": "text", "text": "<JSON>"}], "isError": false|true }`
@@ -360,6 +362,36 @@ Build project using IDE's build system (JPS, Gradle, Maven).
 
 **Returns**: `{ success, aborted, errors?, warnings?, buildMessages: [{message, file, line, column, severity}], truncated, rawOutput?, durationMs }`
 Note: `errors`/`warnings` are `null` when no messages were captured (not 0).
+
+### ide_attach_repo_to_workspace
+Attach a local Git repo root as a workspace content root and return its repo-scoped MCP identity.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `repo_path` | string | yes | Absolute local path to the Git repo root |
+| `project_path` | string | no | Workspace project path |
+
+**Returns**: `{ repoId, repoRootPath, workspaceProjectPath?, repoScopedStreamableHttpUrl, message }`
+
+### ide_detach_repo_from_workspace
+Detach a repo content root from the workspace by repo id.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `repo_id` | string | yes | Repo id returned by `ide_attach_repo_to_workspace` |
+| `project_path` | string | no | Workspace project path |
+
+**Returns**: `{ repoId, repoRootPath, workspaceProjectPath?, repoScopedStreamableHttpUrl, message }`
+
+### ide_get_repo_scoped_client_config
+Export Codex install commands for the broad server plus all currently published repo-scoped Git repo servers. Aggregate workspace folders and nested package content roots are omitted unless they have their own `.git` marker.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `client` | string | no | Currently only `codex` |
+| `project_path` | string | no | Workspace project path |
+
+**Returns**: `{ client, servers: [{name, url, repoId?, repoRootPath?}], installCommands, message }`
 
 ---
 

@@ -2,6 +2,8 @@ package com.github.hechtcarmel.jetbrainsindexmcpplugin.server.transport
 
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.McpConstants
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.JsonRpcHandler
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.RepoScope
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.RepoScopeRegistry
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.models.JsonRpcError
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.models.JsonRpcResponse
 import com.intellij.openapi.Disposable
@@ -135,6 +137,10 @@ class KtorMcpServer(
                 handleCorsPreflight(call)
             }
 
+            options("${McpConstants.MCP_ENDPOINT_PATH}/repos/{repoId}/streamable-http") {
+                handleCorsPreflight(call)
+            }
+
             options(McpConstants.MCP_ENDPOINT_PATH) {
                 handleCorsPreflight(call)
             }
@@ -149,13 +155,30 @@ class KtorMcpServer(
                 handleStreamableHttpPostRequest(call)
             }
 
+            post("${McpConstants.MCP_ENDPOINT_PATH}/repos/{repoId}/streamable-http") {
+                val repoScope = repoScopeFromRoute(call) ?: return@post
+                handleStreamableHttpPostRequest(call, repoScope)
+            }
+
             get(McpConstants.STREAMABLE_HTTP_ENDPOINT_PATH) {
                 if (!validateOrigin(call)) return@get
                 call.response.header(HttpHeaders.Allow, "POST")
                 call.respond(HttpStatusCode.MethodNotAllowed)
             }
 
+            get("${McpConstants.MCP_ENDPOINT_PATH}/repos/{repoId}/streamable-http") {
+                if (!validateOrigin(call)) return@get
+                if (repoScopeFromRoute(call) == null) return@get
+                call.response.header(HttpHeaders.Allow, "POST")
+                call.respond(HttpStatusCode.MethodNotAllowed)
+            }
+
             delete(McpConstants.STREAMABLE_HTTP_ENDPOINT_PATH) {
+                handleStreamableHttpDeleteRequest(call)
+            }
+
+            delete("${McpConstants.MCP_ENDPOINT_PATH}/repos/{repoId}/streamable-http") {
+                if (repoScopeFromRoute(call) == null) return@delete
                 handleStreamableHttpDeleteRequest(call)
             }
 
@@ -246,7 +269,10 @@ class KtorMcpServer(
      * - notifications (no id): returns 202 Accepted
      * - requests (has id): returns JSON response
      */
-    private suspend fun handleStreamableHttpPostRequest(call: ApplicationCall) {
+    private suspend fun handleStreamableHttpPostRequest(
+        call: ApplicationCall,
+        repoScope: RepoScope? = null
+    ) {
         if (!validateOrigin(call)) return
 
         val body = call.receiveText()
@@ -273,7 +299,7 @@ class KtorMcpServer(
         }
 
         if (element is JsonArray) {
-            handleStreamableHttpBatchRequest(call, element)
+            handleStreamableHttpBatchRequest(call, element, repoScope)
             return
         }
 
@@ -292,7 +318,7 @@ class KtorMcpServer(
 
         // Initialize: process and create session
         if (method == "initialize") {
-            handleStreamableHttpInitialize(call, body)
+            handleStreamableHttpInitialize(call, body, repoScope)
             return
         }
 
@@ -309,7 +335,8 @@ class KtorMcpServer(
                 runWithIdeModality {
                     jsonRpcHandler.handleRequest(
                         body,
-                        protocolVersion = McpConstants.STREAMABLE_HTTP_MCP_PROTOCOL_VERSION
+                        protocolVersion = McpConstants.STREAMABLE_HTTP_MCP_PROTOCOL_VERSION,
+                        repoScope = repoScope
                     )
                 }
             } catch (e: Exception) {
@@ -324,7 +351,8 @@ class KtorMcpServer(
             val response = runWithIdeModality {
                 jsonRpcHandler.handleRequest(
                     body,
-                    protocolVersion = McpConstants.STREAMABLE_HTTP_MCP_PROTOCOL_VERSION
+                    protocolVersion = McpConstants.STREAMABLE_HTTP_MCP_PROTOCOL_VERSION,
+                    repoScope = repoScope
                 )
             }
             if (response != null) {
@@ -341,7 +369,11 @@ class KtorMcpServer(
         }
     }
 
-    private suspend fun handleStreamableHttpBatchRequest(call: ApplicationCall, batch: JsonArray) {
+    private suspend fun handleStreamableHttpBatchRequest(
+        call: ApplicationCall,
+        batch: JsonArray,
+        repoScope: RepoScope? = null
+    ) {
         if (batch.isEmpty()) {
             call.respondText(
                 createJsonRpcError(null as JsonElement?, -32600, "JSON-RPC batch requests must not be empty"),
@@ -384,7 +416,8 @@ class KtorMcpServer(
                 runWithIdeModality {
                     jsonRpcHandler.handleRequest(
                         message.toString(),
-                        protocolVersion = McpConstants.STREAMABLE_HTTP_MCP_PROTOCOL_VERSION
+                        protocolVersion = McpConstants.STREAMABLE_HTTP_MCP_PROTOCOL_VERSION,
+                        repoScope = repoScope
                     )
                 }
             } catch (e: Exception) {
@@ -411,12 +444,17 @@ class KtorMcpServer(
     /**
      * Handles initialize request for Streamable HTTP transport.
      */
-    private suspend fun handleStreamableHttpInitialize(call: ApplicationCall, body: String) {
+    private suspend fun handleStreamableHttpInitialize(
+        call: ApplicationCall,
+        body: String,
+        repoScope: RepoScope? = null
+    ) {
         try {
             val response = runWithIdeModality {
                 jsonRpcHandler.handleRequest(
                     body,
-                    protocolVersion = McpConstants.STREAMABLE_HTTP_MCP_PROTOCOL_VERSION
+                    protocolVersion = McpConstants.STREAMABLE_HTTP_MCP_PROTOCOL_VERSION,
+                    repoScope = repoScope
                 )
             }
             if (response != null) {
@@ -441,6 +479,22 @@ class KtorMcpServer(
         if (!validateOrigin(call)) return
         call.response.header(HttpHeaders.Allow, "POST")
         call.respond(HttpStatusCode.MethodNotAllowed)
+    }
+
+    private suspend fun repoScopeFromRoute(call: ApplicationCall): RepoScope? {
+        val repoId = call.parameters["repoId"]
+        if (repoId.isNullOrBlank()) {
+            call.respond(HttpStatusCode.NotFound, "Missing repo id")
+            return null
+        }
+
+        val repoScope = RepoScopeRegistry.resolveOpenRepoScope(repoId)
+        if (repoScope == null) {
+            call.respond(HttpStatusCode.NotFound, "Unknown repo-scoped MCP route: $repoId")
+            return null
+        }
+
+        return repoScope
     }
 
     /**

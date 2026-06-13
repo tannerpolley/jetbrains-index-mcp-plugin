@@ -22,6 +22,9 @@ object ToolNames {
     const val INDEX_STATUS = "ide_index_status"
     const val SYNC_FILES = "ide_sync_files"
     const val BUILD_PROJECT = "ide_build_project"
+    const val ATTACH_REPO_TO_WORKSPACE = "ide_attach_repo_to_workspace"
+    const val DETACH_REPO_FROM_WORKSPACE = "ide_detach_repo_from_workspace"
+    const val GET_REPO_SCOPED_CLIENT_CONFIG = "ide_get_repo_scoped_client_config"
 
     // Refactoring tools
     const val REFACTOR_RENAME = "ide_refactor_rename"
@@ -44,6 +47,8 @@ object ToolNames {
         CALL_HIERARCHY,
         CONVERT_JAVA_TO_KOTLIN,
         DIAGNOSTICS,
+        ATTACH_REPO_TO_WORKSPACE,
+        DETACH_REPO_FROM_WORKSPACE,
         FILE_STRUCTURE,
         FIND_CLASS,
         FIND_DEFINITION,
@@ -53,6 +58,7 @@ object ToolNames {
         FIND_SUPER_METHODS,
         FIND_SYMBOL,
         GET_ACTIVE_FILE,
+        GET_REPO_SCOPED_CLIENT_CONFIG,
         INDEX_STATUS,
         REFACTOR_MOVE,
         OPEN_FILE,

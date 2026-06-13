@@ -66,6 +66,46 @@ class ProjectResolverUnitTest : TestCase() {
         assertEquals(0, result.size)
     }
 
+    fun testBuildAvailableProjectEntriesPrefersGitRepoRootNamesInMasterWorkspace() {
+        val entries = buildAvailableProjectEntriesForProject(
+            projectName = "Workspace",
+            projectBasePath = "C:/Users/Tanner/Documents/Workspaces/Workspace",
+            contentRoots = listOf(
+                ModuleContentRootEntry(
+                    moduleName = "ePC-SAFT.CMake2",
+                    path = "C:/Users/Tanner/Documents/Workspaces/Engineering/ePC-SAFT"
+                ),
+                ModuleContentRootEntry(
+                    moduleName = "epcsaft",
+                    path = "C:/Users/Tanner/Documents/Workspaces/Engineering/ePC-SAFT/packages/epcsaft"
+                )
+            ),
+            includeWorkspaceSubProjects = true
+        ) { path ->
+            path == "C:/Users/Tanner/Documents/Workspaces/Engineering/ePC-SAFT"
+        }
+
+        assertEquals(1, entries.size)
+        assertEquals("ePC-SAFT", entries.single().name)
+        assertEquals("C:/Users/Tanner/Documents/Workspaces/Engineering/ePC-SAFT", entries.single().path)
+        assertEquals("Workspace", entries.single().workspace)
+    }
+
+    fun testBuildAvailableProjectEntriesKeepsNormalProjectWhenNoGitWorkspaceRootsExist() {
+        val entries = buildAvailableProjectEntriesForProject(
+            projectName = "plain-workspace",
+            projectBasePath = "/workspace/plain",
+            contentRoots = listOf(
+                ModuleContentRootEntry(moduleName = "module-a", path = "/workspace/plain/module-a")
+            ),
+            includeWorkspaceSubProjects = true
+        ) { false }
+
+        assertEquals(2, entries.size)
+        assertEquals("plain-workspace", entries[0].name)
+        assertEquals("module-a", entries[1].name)
+    }
+
     fun testBuildStructuredErrorResultDefaultsToJson() {
         val result = buildStructuredErrorResult(
             buildJsonObject {

@@ -1,6 +1,8 @@
 package com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers
 
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.constants.ParamNames
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.RepoScopeContext
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.RepoScopeRegistry
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.vfs.VirtualFile
@@ -51,7 +53,17 @@ internal object BuiltInSearchScopeResolver {
                 projectContentScope(project) { file -> fileIndex.isInTestSourceContent(file) }
             }
         }
-        return GeneratedSourcesExcludingScope.wrap(project, base, excludeGenerated)
+        val repoScope = RepoScopeContext.current()
+        val scopedBase = if (repoScope == null) {
+            base
+        } else {
+            object : DelegatingGlobalSearchScope(base) {
+                override fun contains(file: VirtualFile): Boolean =
+                    super.contains(file) && RepoScopeRegistry.isPathInsideScope(repoScope, file.path)
+            }
+        }
+
+        return GeneratedSourcesExcludingScope.wrap(project, scopedBase, excludeGenerated)
     }
 
     fun resolveSearchScope(
