@@ -11,8 +11,6 @@ import com.github.hechtcarmel.jetbrainsindexmcpplugin.history.CommandStatus
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.McpServerService
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.RepoScopeRegistry
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.util.IdeProductInfo
-import com.github.hechtcarmel.jetbrainsindexmcpplugin.util.RepoEndpointDisplay
-import com.github.hechtcarmel.jetbrainsindexmcpplugin.util.RepoEndpointDisplayRow
 import com.intellij.icons.AllIcons
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
@@ -220,7 +218,7 @@ class ServerStatusPanel(private val project: Project) : JBPanel<ServerStatusPane
     private val urlLabel: JBLabel
     private val projectLabel: JBLabel
     private val settingsLink: JBLabel
-    private val repoEndpointsPanel: JBPanel<JBPanel<*>>
+    private val endpointInventoryPanel: EndpointInventoryPanel
 
     init {
         border = JBUI.Borders.empty(8)
@@ -269,16 +267,12 @@ class ServerStatusPanel(private val project: Project) : JBPanel<ServerStatusPane
         mainRowPanel.add(settingsLink)
         mainRowPanel.add(projectLabel)
 
-        repoEndpointsPanel = JBPanel<JBPanel<*>>().apply {
-            layout = BoxLayout(this, BoxLayout.Y_AXIS)
-            border = JBUI.Borders.empty(4, 24, 0, 0)
-            isOpaque = false
-            isVisible = false
+        endpointInventoryPanel = EndpointInventoryPanel().apply {
             alignmentX = Component.LEFT_ALIGNMENT
         }
 
         contentPanel.add(mainRowPanel)
-        contentPanel.add(repoEndpointsPanel)
+        contentPanel.add(endpointInventoryPanel)
 
         add(contentPanel, BorderLayout.CENTER)
 
@@ -295,7 +289,7 @@ class ServerStatusPanel(private val project: Project) : JBPanel<ServerStatusPane
                 urlLabel.text = ""
                 settingsLink.isVisible = false
                 projectLabel.text = ""
-                setRepoEndpointRows(emptyList())
+                setEndpointRows(null, EndpointInventoryState.INITIALIZING)
                 return
             }
 
@@ -309,7 +303,7 @@ class ServerStatusPanel(private val project: Project) : JBPanel<ServerStatusPane
                 urlLabel.foreground = JBColor.RED
                 settingsLink.isVisible = true
                 projectLabel.text = ""
-                setRepoEndpointRows(emptyList())
+                setEndpointRows(null, EndpointInventoryState.ERROR)
             } else if (mcpService.isServerRunning()) {
                 // Running state
                 val url = mcpService.getServerUrl()
@@ -319,14 +313,7 @@ class ServerStatusPanel(private val project: Project) : JBPanel<ServerStatusPane
                 urlLabel.foreground = JBColor.BLUE
                 settingsLink.isVisible = false
                 projectLabel.text = "| Project: ${project.name}"
-                setRepoEndpointRows(
-                    url?.let {
-                        RepoEndpointDisplay.buildRows(
-                            broadStreamableHttpUrl = it,
-                            repoScopes = RepoScopeRegistry.collectOpenRepoScopes()
-                        )
-                    } ?: emptyList()
-                )
+                setEndpointRows(url, EndpointInventoryState.RUNNING)
             } else {
                 // Stopped state
                 statusLabel.text = "MCP Server Stopped"
@@ -334,7 +321,7 @@ class ServerStatusPanel(private val project: Project) : JBPanel<ServerStatusPane
                 urlLabel.text = ""
                 settingsLink.isVisible = true
                 projectLabel.text = ""
-                setRepoEndpointRows(emptyList())
+                setEndpointRows(null, EndpointInventoryState.OFFLINE)
             }
         } catch (e: Exception) {
             statusLabel.text = "MCP Server Error"
@@ -343,37 +330,23 @@ class ServerStatusPanel(private val project: Project) : JBPanel<ServerStatusPane
             urlLabel.foreground = JBColor.RED
             settingsLink.isVisible = true
             projectLabel.text = ""
-            setRepoEndpointRows(emptyList())
+            setEndpointRows(null, EndpointInventoryState.ERROR)
         }
     }
 
-    private fun setRepoEndpointRows(rows: List<RepoEndpointDisplayRow>) {
-        repoEndpointsPanel.removeAll()
-        repoEndpointsPanel.isVisible = rows.isNotEmpty()
-
-        rows.forEach { row ->
-            val rowPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 8, 0)).apply {
-                isOpaque = false
-                alignmentX = Component.LEFT_ALIGNMENT
-                toolTipText = row.repoRootPath
-            }
-
-            val endpointLabel = JBLabel(row.url).apply {
-                foreground = JBColor.BLUE
-                toolTipText = row.repoRootPath
-            }
-
-            val repoLabel = JBLabel("| Repo/Module: ${row.repoModuleName}").apply {
-                toolTipText = row.repoRootPath
-            }
-
-            rowPanel.add(endpointLabel)
-            rowPanel.add(repoLabel)
-            repoEndpointsPanel.add(rowPanel)
-        }
-
-        repoEndpointsPanel.revalidate()
-        repoEndpointsPanel.repaint()
+    private fun setEndpointRows(
+        broadUrl: String?,
+        state: EndpointInventoryState
+    ) {
+        endpointInventoryPanel.setRows(
+            EndpointInventoryModel.buildRows(
+                broadStreamableHttpUrl = broadUrl,
+                projectName = project.name,
+                workspaceProjectPath = project.basePath,
+                repoScopes = RepoScopeRegistry.collectOpenRepoScopes(),
+                serverState = state
+            )
+        )
     }
 }
 

@@ -59,6 +59,20 @@ class McpToolWindowPanelTest : BasePlatformTestCase() {
         }
     }
 
+    fun testToolWindowContainsEndpointInventoryPanel() {
+        val panel = McpToolWindowPanel(project)
+        try {
+            val endpointPanel = findComponent(panel, EndpointInventoryPanel::class.java)
+
+            assertNotNull(
+                "Endpoint inventory panel should be part of the tool window header",
+                endpointPanel
+            )
+        } finally {
+            panel.dispose()
+        }
+    }
+
     private fun applyFilter(panel: McpToolWindowPanel, filter: CommandFilter) {
         val filterField = McpToolWindowPanel::class.java.getDeclaredField("currentFilter")
         filterField.isAccessible = true
@@ -79,5 +93,20 @@ class McpToolWindowPanelTest : BasePlatformTestCase() {
 
     private fun dispatchUiEvents() {
         PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+    }
+
+    private fun <T : java.awt.Component> findComponent(root: java.awt.Container, type: Class<T>): T? {
+        for (component in root.components) {
+            if (type.isInstance(component)) {
+                return type.cast(component)
+            }
+            if (component is java.awt.Container) {
+                val nested = findComponent(component, type)
+                if (nested != null) {
+                    return nested
+                }
+            }
+        }
+        return null
     }
 }
