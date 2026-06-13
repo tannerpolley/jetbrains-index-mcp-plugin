@@ -142,6 +142,9 @@ for detailed documentation and examples.</p>
         <!-- Tool Window -->
         <toolWindow id="Index MCP Server" anchor="bottom" icon="com.github.hechtcarmel.jetbrainsindexmcpplugin.icons.McpIcons.ToolWindow" factoryClass="com.github.hechtcarmel.jetbrainsindexmcpplugin.ui.McpToolWindowFactory"/>
 
+        <!-- Repo-owned run configurations in the Services tool window -->
+        <serviceViewContributor implementation="com.github.hechtcarmel.jetbrainsindexmcpplugin.services.RepoRunConfigServiceContributor"/>
+
         <!-- Settings -->
         <applicationService serviceImplementation="com.github.hechtcarmel.jetbrainsindexmcpplugin.settings.McpSettings"/>
         <applicationConfigurable id="mcp.settings" displayName="Index MCP Server" instance="com.github.hechtcarmel.jetbrainsindexmcpplugin.settings.McpSettingsConfigurable"/>
