@@ -249,6 +249,11 @@ These tools work in all supported JetBrains IDEs.
 | `ide_read_file` | Read file content by path or qualified name, including library/jar sources *(disabled by default)* |
 | `ide_get_active_file` | Get the currently active file(s) in the editor with cursor position *(disabled by default)* |
 | `ide_open_file` | Open a file in the editor with optional line/column navigation *(disabled by default)* |
+| `ide_set_power_save_mode` | Enable or disable IDE Power Save Mode — suspends background inspections while keeping the index and all code intelligence operational *(disabled by default)* |
+| `ide_close_project` | Close an open project window and free its memory — refuses to close the last open project *(disabled by default)* |
+| `ide_open_project` | Open a project by absolute path and wait until indexing completes (configurable timeout); returns immediately if already open *(disabled by default)* |
+| `ide_install_plugin` | Install a plugin zip into the IDE, replacing any existing version — auto-detects `build/distributions/*.zip` when no path is given *(disabled by default)* |
+| `ide_restart` | Restart the IDE — terminates the MCP connection; call after `ide_install_plugin` *(disabled by default)* |
 | `ide_refactor_rename` | Rename a symbol and update all references across the project (all languages) |
 | `ide_move_file` | Move a file to a new directory, applying language-aware reference/package updates when the IDE provides a semantic move backend |
 | `ide_reformat_code` | Reformat code using project code style with import optimization *(disabled by default)* |

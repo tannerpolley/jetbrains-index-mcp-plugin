@@ -4,6 +4,25 @@
 
 ## [Unreleased]
 
+## [4.22.0] - 2026-06-12
+### Added
+All three tools are **disabled by default** and must be enabled in Settings → Tools → Index MCP Server before use.
+
+- **`ide_set_power_save_mode`** — enable or disable IDE Power Save Mode (IDE-wide). Suspends background inspections and on-the-fly code analysis to cut CPU/memory usage while the index and all code intelligence operations (find usages, refactoring, navigation) remain fully functional.
+- **`ide_close_project`** — close an open project window and free its memory. Non-blocking; the project can be reopened via Recent Projects or `ide_open_project`. Refuses to close the last open project so the MCP server always keeps a JSON-RPC context project.
+- **`ide_open_project`** — open a project by absolute filesystem path and wait until indexing completes (`timeoutSeconds`, default 600), so follow-up tool calls succeed immediately. Idempotent for already-open projects; reports partial success if the project opens but indexing exceeds the timeout.
+
+## [4.21.1] - 2026-06-11
+### Fixed
+- Fixed JetBrains Marketplace compatibility issue (internal IntelliJ API usage in `ide_restart`).
+
+## [4.21.0] - 2026-06-10
+### Added
+Both tools are **disabled by default** and must be enabled in Settings → Tools → Index MCP Server before use.
+
+- **`ide_install_plugin`** — install a plugin zip into the IDE, replacing any existing version. Auto-detects the output of `./gradlew buildPlugin` (`build/distributions/*.zip`) when no path is supplied; accepts an explicit path for any plugin zip. A restart is required to load the updated plugin.
+- **`ide_restart`** — restart the IDE. Terminates the MCP connection immediately; no further tool calls should be made after invoking this. Typical use: `ide_install_plugin` followed by `ide_restart`.
+
 ## [4.20.0] - 2026-06-07
 ### Added
 - Added `includeGenerated` controls so generated code can be included when it matters and filtered when it adds noise.

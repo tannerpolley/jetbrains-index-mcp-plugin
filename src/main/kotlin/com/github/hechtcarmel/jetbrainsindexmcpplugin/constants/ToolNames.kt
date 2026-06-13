@@ -38,6 +38,14 @@ object ToolNames {
     const val GET_ACTIVE_FILE = "ide_get_active_file"
     const val OPEN_FILE = "ide_open_file"
 
+    // Plugin development tools
+    const val INSTALL_PLUGIN = "ide_install_plugin"
+    const val RESTART_IDE = "ide_restart"
+    // Project window management
+    const val CLOSE_PROJECT = "ide_close_project"
+    const val OPEN_PROJECT = "ide_open_project"
+    const val SET_POWER_SAVE_MODE = "ide_set_power_save_mode"
+
     /**
      * All known tool names, sorted alphabetically.
      * Keep this list in sync when adding or removing tool name constants.
@@ -45,6 +53,7 @@ object ToolNames {
     val ALL: List<String> = listOf(
         BUILD_PROJECT,
         CALL_HIERARCHY,
+        CLOSE_PROJECT,
         CONVERT_JAVA_TO_KOTLIN,
         DIAGNOSTICS,
         ATTACH_REPO_TO_WORKSPACE,
@@ -60,14 +69,18 @@ object ToolNames {
         GET_ACTIVE_FILE,
         GET_REPO_SCOPED_CLIENT_CONFIG,
         INDEX_STATUS,
+        INSTALL_PLUGIN,
         REFACTOR_MOVE,
         OPEN_FILE,
+        OPEN_PROJECT,
         OPTIMIZE_IMPORTS,
         READ_FILE,
         REFACTOR_RENAME,
         REFACTOR_SAFE_DELETE,
         REFORMAT_CODE,
+        RESTART_IDE,
         SEARCH_TEXT,
+        SET_POWER_SAVE_MODE,
         SYNC_FILES,
         TYPE_HIERARCHY
     )

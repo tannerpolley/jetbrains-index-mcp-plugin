@@ -493,7 +493,14 @@ class ToolExecutionIntegrationTest : BasePlatformTestCase() {
             ToolNames.OPTIMIZE_IMPORTS,
             // Editor tools
             ToolNames.GET_ACTIVE_FILE,
-            ToolNames.OPEN_FILE
+            ToolNames.OPEN_FILE,
+            // Plugin dev tools
+            ToolNames.INSTALL_PLUGIN,
+            ToolNames.RESTART_IDE,
+            // Project window management tools
+            ToolNames.CLOSE_PROJECT,
+            ToolNames.OPEN_PROJECT,
+            ToolNames.SET_POWER_SAVE_MODE
         )
         if (PluginDetectors.java.isAvailable && PluginDetectors.kotlin.isAvailable) {
             expectedTools.add(ToolNames.CONVERT_JAVA_TO_KOTLIN)

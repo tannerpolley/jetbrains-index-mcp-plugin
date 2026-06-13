@@ -16,9 +16,14 @@ import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.navigation.ReadFileT
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.navigation.SearchTextTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.AttachRepoToWorkspaceTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.BuildProjectTool
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.CloseProjectTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.DetachRepoFromWorkspaceTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.GetIndexStatusTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.GetRepoScopedClientConfigTool
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.InstallPluginTool
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.OpenProjectTool
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.RestartIdeTool
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.SetPowerSaveModeTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.SyncFilesTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.refactoring.MoveFileTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.refactoring.OptimizeImportsTool
@@ -241,6 +246,11 @@ class ToolRegistry {
         register(AttachRepoToWorkspaceTool())
         register(DetachRepoFromWorkspaceTool())
         register(GetRepoScopedClientConfigTool())
+        register(InstallPluginTool())
+        register(RestartIdeTool())
+        register(SetPowerSaveModeTool())
+        register(CloseProjectTool())
+        register(OpenProjectTool())
 
         // Refactoring tools (universal - uses platform APIs)
         register(RenameSymbolTool())
