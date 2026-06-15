@@ -8,6 +8,7 @@ import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import kotlinx.serialization.json.buildJsonObject
 import javax.swing.DefaultListModel
+import javax.swing.JButton
 
 class McpToolWindowPanelTest : BasePlatformTestCase() {
 
@@ -73,6 +74,35 @@ class McpToolWindowPanelTest : BasePlatformTestCase() {
         }
     }
 
+    fun testEndpointInventoryPanelDefaultsToCollapsedSummary() {
+        val endpointPanel = EndpointInventoryPanel()
+        endpointPanel.setRows(sampleEndpointRows())
+
+        val toggle = findComponent(endpointPanel, JButton::class.java)
+
+        assertNotNull("Endpoint inventory should expose a compact toggle", toggle)
+        assertFalse("Endpoint rows should be collapsed by default", endpointPanel.isExpandedForTest())
+        assertEquals("> Endpoints: 1 workspace, 2 repos", toggle!!.text)
+    }
+
+    fun testEndpointInventoryPanelTogglesExpandedRows() {
+        val endpointPanel = EndpointInventoryPanel()
+        endpointPanel.setRows(sampleEndpointRows())
+        val toggle = findComponent(endpointPanel, JButton::class.java)!!
+
+        toggle.doClick()
+        dispatchUiEvents()
+
+        assertTrue("Endpoint rows should expand after toggle click", endpointPanel.isExpandedForTest())
+        assertEquals("v Endpoints: 1 workspace, 2 repos", toggle.text)
+
+        toggle.doClick()
+        dispatchUiEvents()
+
+        assertFalse("Endpoint rows should collapse after second toggle click", endpointPanel.isExpandedForTest())
+        assertEquals("> Endpoints: 1 workspace, 2 repos", toggle.text)
+    }
+
     private fun applyFilter(panel: McpToolWindowPanel, filter: CommandFilter) {
         val filterField = McpToolWindowPanel::class.java.getDeclaredField("currentFilter")
         filterField.isAccessible = true
@@ -94,6 +124,33 @@ class McpToolWindowPanelTest : BasePlatformTestCase() {
     private fun dispatchUiEvents() {
         PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
     }
+
+    private fun sampleEndpointRows(): List<EndpointInventoryRow> = listOf(
+        EndpointInventoryRow(
+            id = "workspace",
+            scopeKind = EndpointScopeKind.WORKSPACE,
+            scopeName = "Workspace",
+            url = "http://127.0.0.1:29170/index-mcp/streamable-http",
+            rootPath = "C:/Workspace",
+            state = EndpointInventoryState.RUNNING
+        ),
+        EndpointInventoryRow(
+            id = "repo:ePC-SAFT",
+            scopeKind = EndpointScopeKind.REPO,
+            scopeName = "ePC-SAFT",
+            url = "http://127.0.0.1:29170/index-mcp/repos/ePC-SAFT/streamable-http",
+            rootPath = "C:/Workspace/ePC-SAFT",
+            state = EndpointInventoryState.RUNNING
+        ),
+        EndpointInventoryRow(
+            id = "repo:jetbrains-bridge",
+            scopeKind = EndpointScopeKind.REPO,
+            scopeName = "jetbrains-bridge",
+            url = "http://127.0.0.1:29170/index-mcp/repos/jetbrains-bridge/streamable-http",
+            rootPath = "C:/Workspace/jetbrains-bridge",
+            state = EndpointInventoryState.RUNNING
+        )
+    )
 
     private fun <T : java.awt.Component> findComponent(root: java.awt.Container, type: Class<T>): T? {
         for (component in root.components) {

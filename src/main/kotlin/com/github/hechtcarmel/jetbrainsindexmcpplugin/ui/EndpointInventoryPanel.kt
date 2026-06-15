@@ -5,25 +5,69 @@ import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
 import com.intellij.util.ui.JBUI
+import java.awt.BorderLayout
 import java.awt.FlowLayout
 import java.awt.datatransfer.StringSelection
 import javax.swing.BoxLayout
 import javax.swing.JButton
+import javax.swing.SwingConstants
 
-class EndpointInventoryPanel : JBPanel<EndpointInventoryPanel>() {
+class EndpointInventoryPanel : JBPanel<EndpointInventoryPanel>(BorderLayout()) {
+    private val toggleButton = JButton()
+    private val rowsPanel = JBPanel<JBPanel<*>>()
+    private var rows: List<EndpointInventoryRow> = emptyList()
+    private var expanded = false
+
     init {
-        layout = BoxLayout(this, BoxLayout.Y_AXIS)
-        border = JBUI.Borders.empty(4, 24, 4, 0)
+        border = JBUI.Borders.empty(2, 24, 2, 0)
         isOpaque = false
         isVisible = false
+
+        toggleButton.apply {
+            isOpaque = false
+            isBorderPainted = false
+            isContentAreaFilled = false
+            horizontalAlignment = SwingConstants.LEFT
+            addActionListener {
+                expanded = !expanded
+                updateExpandedState()
+            }
+        }
+
+        rowsPanel.apply {
+            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+            border = JBUI.Borders.empty(2, 16, 0, 0)
+            isOpaque = false
+            isVisible = false
+        }
+
+        add(toggleButton, BorderLayout.NORTH)
+        add(rowsPanel, BorderLayout.CENTER)
     }
 
     fun setRows(rows: List<EndpointInventoryRow>) {
-        removeAll()
+        this.rows = rows
         isVisible = rows.isNotEmpty()
-        rows.forEach { row -> add(createRow(row)) }
+        rowsPanel.removeAll()
+        rows.forEach { row -> rowsPanel.add(createRow(row)) }
+        updateExpandedState()
         revalidate()
         repaint()
+    }
+
+    internal fun isExpandedForTest(): Boolean = expanded
+
+    private fun updateExpandedState() {
+        rowsPanel.isVisible = expanded && rows.isNotEmpty()
+        val repoCount = rows.count { it.scopeKind == EndpointScopeKind.REPO }
+        val workspaceCount = rows.count { it.scopeKind == EndpointScopeKind.WORKSPACE }
+        val icon = if (expanded) "v" else ">"
+        toggleButton.text = "$icon Endpoints: $workspaceCount workspace, $repoCount repos"
+        toggleButton.toolTipText = if (expanded) {
+            "Collapse endpoint URLs"
+        } else {
+            "Expand endpoint URLs"
+        }
     }
 
     private fun createRow(row: EndpointInventoryRow): JBPanel<JBPanel<*>> {
