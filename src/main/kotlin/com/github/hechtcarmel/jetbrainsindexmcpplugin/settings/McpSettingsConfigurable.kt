@@ -49,6 +49,7 @@ class McpSettingsConfigurable : Configurable {
     private var serverPortSpinner: JSpinner? = null
     private var syncExternalChangesCheckBox: JBCheckBox? = null
     private var autoSyncCodexWorkspaceReposCheckBox: JBCheckBox? = null
+    private var autoInstallCodexMcpRegistrationsCheckBox: JBCheckBox? = null
     private var availableProjectsModeComboBox: ComboBox<McpSettings.AvailableProjectsMode>? = null
     private var responseFormatComboBox: ComboBox<McpSettings.ResponseFormat>? = null
     private val toolCheckBoxes = mutableMapOf<String, JBCheckBox>()
@@ -103,6 +104,9 @@ class McpSettingsConfigurable : Configurable {
         autoSyncCodexWorkspaceReposCheckBox = JBCheckBox(McpBundle.message("settings.autoSyncCodexWorkspaceRepos")).apply {
             toolTipText = McpBundle.message("settings.autoSyncCodexWorkspaceRepos.tooltip")
         }
+        autoInstallCodexMcpRegistrationsCheckBox = JBCheckBox(McpBundle.message("settings.autoInstallCodexMcpRegistrations")).apply {
+            toolTipText = McpBundle.message("settings.autoInstallCodexMcpRegistrations.tooltip")
+        }
         availableProjectsModeComboBox = ComboBox(McpSettings.AvailableProjectsMode.values()).apply {
             toolTipText = McpBundle.message("settings.availableProjectsMode.tooltip")
             renderer = SimpleListCellRenderer.create("") { value ->
@@ -142,6 +146,7 @@ class McpSettingsConfigurable : Configurable {
             .addLabeledComponent(JBLabel(McpBundle.message("settings.availableProjectsMode") + ":"), availableProjectsModeComboBox!!, 1, false)
             .addLabeledComponent(JBLabel(McpBundle.message("settings.responseFormat") + ":"), responseFormatComboBox!!, 1, false)
             .addComponent(autoSyncCodexWorkspaceReposCheckBox!!, 1)
+            .addComponent(autoInstallCodexMcpRegistrationsCheckBox!!, 1)
             .addComponent(syncPanel, 1)
             .addSeparator(10)
             .addComponent(JBLabel(McpBundle.message("settings.tools.title")), 5)
@@ -188,6 +193,7 @@ class McpSettingsConfigurable : Configurable {
             maxHistorySizeSpinner?.value != settings.maxHistorySize ||
             syncExternalChangesCheckBox?.isSelected != settings.syncExternalChanges ||
             autoSyncCodexWorkspaceReposCheckBox?.isSelected != settings.autoSyncCodexWorkspaceRepos ||
+            autoInstallCodexMcpRegistrationsCheckBox?.isSelected != settings.autoInstallCodexMcpRegistrations ||
             availableProjectsModeComboBox?.selectedItem != settings.availableProjectsMode ||
             responseFormatComboBox?.selectedItem != settings.responseFormat) {
             return true
@@ -244,6 +250,7 @@ class McpSettingsConfigurable : Configurable {
         settings.maxHistorySize = maxHistorySizeSpinner?.value as? Int ?: 100
         settings.syncExternalChanges = syncExternalChangesCheckBox?.isSelected ?: false
         settings.autoSyncCodexWorkspaceRepos = autoSyncCodexWorkspaceReposCheckBox?.isSelected ?: true
+        settings.autoInstallCodexMcpRegistrations = autoInstallCodexMcpRegistrationsCheckBox?.isSelected ?: true
         settings.availableProjectsMode =
             availableProjectsModeComboBox?.selectedItem as? McpSettings.AvailableProjectsMode
                 ?: McpSettings.AvailableProjectsMode.EXPANDED
@@ -336,6 +343,7 @@ class McpSettingsConfigurable : Configurable {
         maxHistorySizeSpinner?.value = settings.maxHistorySize
         syncExternalChangesCheckBox?.isSelected = settings.syncExternalChanges
         autoSyncCodexWorkspaceReposCheckBox?.isSelected = settings.autoSyncCodexWorkspaceRepos
+        autoInstallCodexMcpRegistrationsCheckBox?.isSelected = settings.autoInstallCodexMcpRegistrations
         availableProjectsModeComboBox?.selectedItem = settings.availableProjectsMode
         responseFormatComboBox?.selectedItem = settings.responseFormat
         
@@ -434,6 +442,7 @@ class McpSettingsConfigurable : Configurable {
         maxHistorySizeSpinner = null
         syncExternalChangesCheckBox = null
         autoSyncCodexWorkspaceReposCheckBox = null
+        autoInstallCodexMcpRegistrationsCheckBox = null
         availableProjectsModeComboBox = null
         responseFormatComboBox = null
         toolCheckBoxes.clear()

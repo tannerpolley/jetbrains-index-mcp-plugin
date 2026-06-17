@@ -26,6 +26,7 @@ class ConstantsUnitTest : TestCase() {
         assertEquals("ide_attach_repo_to_workspace", ToolNames.ATTACH_REPO_TO_WORKSPACE)
         assertEquals("ide_detach_repo_from_workspace", ToolNames.DETACH_REPO_FROM_WORKSPACE)
         assertEquals("ide_get_repo_scoped_client_config", ToolNames.GET_REPO_SCOPED_CLIENT_CONFIG)
+        assertEquals("ide_install_repo_scoped_codex_config", ToolNames.INSTALL_REPO_SCOPED_CODEX_CONFIG)
         assertEquals("ide_sync_codex_workspace_repos", ToolNames.SYNC_CODEX_WORKSPACE_REPOS)
     }
 
@@ -68,6 +69,7 @@ class ConstantsUnitTest : TestCase() {
             ToolNames.ATTACH_REPO_TO_WORKSPACE,
             ToolNames.DETACH_REPO_FROM_WORKSPACE,
             ToolNames.GET_REPO_SCOPED_CLIENT_CONFIG,
+            ToolNames.INSTALL_REPO_SCOPED_CODEX_CONFIG,
             ToolNames.SYNC_CODEX_WORKSPACE_REPOS,
             ToolNames.REFACTOR_RENAME,
             ToolNames.REFACTOR_SAFE_DELETE,

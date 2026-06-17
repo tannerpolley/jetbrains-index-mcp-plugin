@@ -23,6 +23,7 @@ import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.AttachRepoTo
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.BuildProjectTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.DetachRepoFromWorkspaceTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.GetRepoScopedClientConfigTool
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.InstallRepoScopedCodexConfigTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.SyncCodexWorkspaceReposTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.SyncFilesTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.refactoring.MoveFileTool
@@ -181,6 +182,20 @@ class ToolsUnitTest : TestCase() {
         assertNotNull("Should have dryRun property", properties?.get("dryRun"))
         assertNotNull("Should have codex_state_path property", properties?.get("codex_state_path"))
         assertNotNull("Should have includeWorktrees property", properties?.get("includeWorktrees"))
+        assertNotNull("Should have installCodexMcp property", properties?.get("installCodexMcp"))
+        assertNull("Should not have required array", schema[SchemaConstants.REQUIRED])
+    }
+
+    fun testInstallRepoScopedCodexConfigToolSchema() {
+        val tool = InstallRepoScopedCodexConfigTool()
+
+        assertEquals(ToolNames.INSTALL_REPO_SCOPED_CODEX_CONFIG, tool.name)
+        assertNotNull(tool.description)
+
+        val schema = tool.inputSchema
+        val properties = schema[SchemaConstants.PROPERTIES]?.jsonObject
+        assertNotNull("Should have project_path property", properties?.get(ParamNames.PROJECT_PATH))
+        assertNotNull("Should have dryRun property", properties?.get("dryRun"))
         assertNull("Should not have required array", schema[SchemaConstants.REQUIRED])
     }
 
@@ -191,6 +206,7 @@ class ToolsUnitTest : TestCase() {
         assertNotNull("ide_attach_repo_to_workspace should be registered", registry.getTool(ToolNames.ATTACH_REPO_TO_WORKSPACE))
         assertNotNull("ide_detach_repo_from_workspace should be registered", registry.getTool(ToolNames.DETACH_REPO_FROM_WORKSPACE))
         assertNotNull("ide_get_repo_scoped_client_config should be registered", registry.getTool(ToolNames.GET_REPO_SCOPED_CLIENT_CONFIG))
+        assertNotNull("ide_install_repo_scoped_codex_config should be registered", registry.getTool(ToolNames.INSTALL_REPO_SCOPED_CODEX_CONFIG))
         assertNotNull("ide_sync_codex_workspace_repos should be registered", registry.getTool(ToolNames.SYNC_CODEX_WORKSPACE_REPOS))
     }
 

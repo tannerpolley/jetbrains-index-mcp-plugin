@@ -25,6 +25,7 @@ object ToolNames {
     const val ATTACH_REPO_TO_WORKSPACE = "ide_attach_repo_to_workspace"
     const val DETACH_REPO_FROM_WORKSPACE = "ide_detach_repo_from_workspace"
     const val GET_REPO_SCOPED_CLIENT_CONFIG = "ide_get_repo_scoped_client_config"
+    const val INSTALL_REPO_SCOPED_CODEX_CONFIG = "ide_install_repo_scoped_codex_config"
     const val SYNC_CODEX_WORKSPACE_REPOS = "ide_sync_codex_workspace_repos"
 
     // Refactoring tools
@@ -71,6 +72,7 @@ object ToolNames {
         GET_REPO_SCOPED_CLIENT_CONFIG,
         INDEX_STATUS,
         INSTALL_PLUGIN,
+        INSTALL_REPO_SCOPED_CODEX_CONFIG,
         REFACTOR_MOVE,
         OPEN_FILE,
         OPEN_PROJECT,

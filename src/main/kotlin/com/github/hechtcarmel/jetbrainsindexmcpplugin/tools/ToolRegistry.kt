@@ -20,6 +20,7 @@ import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.CloseProject
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.DetachRepoFromWorkspaceTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.GetIndexStatusTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.GetRepoScopedClientConfigTool
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.InstallRepoScopedCodexConfigTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.InstallPluginTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.OpenProjectTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.RestartIdeTool
@@ -248,6 +249,7 @@ class ToolRegistry {
         register(DetachRepoFromWorkspaceTool())
         register(SyncCodexWorkspaceReposTool())
         register(GetRepoScopedClientConfigTool())
+        register(InstallRepoScopedCodexConfigTool())
         register(InstallPluginTool())
         register(RestartIdeTool())
         register(SetPowerSaveModeTool())

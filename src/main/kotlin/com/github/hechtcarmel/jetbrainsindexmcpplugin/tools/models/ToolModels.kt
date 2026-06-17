@@ -218,6 +218,23 @@ data class RepoScopedClientConfigResult(
 )
 
 @Serializable
+data class CodexMcpRegistrationCommandResult(
+    val command: String,
+    val exitCode: Int? = null,
+    val output: String = ""
+)
+
+@Serializable
+data class CodexMcpRegistrationResult(
+    val dryRun: Boolean,
+    val servers: List<RepoScopedClientServer>,
+    val commands: List<String>,
+    val succeeded: List<CodexMcpRegistrationCommandResult>,
+    val failures: List<CodexMcpRegistrationCommandResult>,
+    val message: String
+)
+
+@Serializable
 data class CodexWorkspaceRepoEntry(
     val repoId: String,
     val repoRootPath: String,
@@ -242,6 +259,7 @@ data class CodexWorkspaceSyncResult(
     val attached: List<CodexWorkspaceRepoEntry>,
     val skipped: List<CodexWorkspaceSkippedPath>,
     val errors: List<CodexWorkspaceSkippedPath>,
+    val codexMcpRegistration: CodexMcpRegistrationResult? = null,
     val message: String
 )
 

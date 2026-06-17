@@ -33,6 +33,7 @@ class McpSettings : PersistentStateComponent<McpSettings.State> {
         var maxHistorySize: Int = 100,
         var syncExternalChanges: Boolean = false,
         var autoSyncCodexWorkspaceRepos: Boolean = true,
+        var autoInstallCodexMcpRegistrations: Boolean = true,
         var availableProjectsMode: AvailableProjectsMode = AvailableProjectsMode.EXPANDED,
         var responseFormat: ResponseFormat = ResponseFormat.JSON,
         var disabledTools: MutableSet<String> = mutableSetOf(
@@ -64,6 +65,10 @@ class McpSettings : PersistentStateComponent<McpSettings.State> {
     var autoSyncCodexWorkspaceRepos: Boolean
         get() = state.autoSyncCodexWorkspaceRepos
         set(value) { state.autoSyncCodexWorkspaceRepos = value }
+
+    var autoInstallCodexMcpRegistrations: Boolean
+        get() = state.autoInstallCodexMcpRegistrations
+        set(value) { state.autoInstallCodexMcpRegistrations = value }
 
     var availableProjectsMode: AvailableProjectsMode
         get() = state.availableProjectsMode

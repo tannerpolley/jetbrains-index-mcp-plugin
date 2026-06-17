@@ -15,7 +15,7 @@ Complete parameter reference for all IDE MCP tools. All tools use JSON-RPC via M
 
 **Symbol reference:** Some tools accept `language` + `symbol` as an alternative to `file` + `line` + `column`. The two groups are **mutually exclusive**. Supported languages: Java, PHP. Unsupported languages are rejected explicitly; use `file` + `line` + `column` for other languages.
 
-**Repo-scoped endpoints:** `/index-mcp/repos/<repo-id>/streamable-http` pins calls to one repo root. In a master Workspace project, prefer `ide_sync_codex_workspace_repos` to discover Codex Desktop repo roots and Git worktrees, attach missing Git roots, and refresh endpoint publication. Use `ide_attach_repo_to_workspace` for explicit manual attach, then `ide_get_repo_scoped_client_config`, then register the returned `intellij-index-<repo-id>` server when the MCP client does not already have it. A conflicting `project_path` returns `repo_scope_conflict`. Repo-scoped endpoints currently allow file/status tools and reject high-risk semantic navigation tools that are not proven sub-root safe.
+**Repo-scoped endpoints:** `/index-mcp/repos/<repo-id>/streamable-http` pins calls to one repo root. In a master Workspace project, prefer `ide_sync_codex_workspace_repos` to discover Codex Desktop repo roots and Git worktrees, attach missing Git roots, refresh endpoint publication, and optionally install Codex MCP registrations with `installCodexMcp`. Use `ide_attach_repo_to_workspace` for explicit manual attach, then `ide_install_repo_scoped_codex_config` when the MCP client lacks broad or scoped server registrations. `ide_get_repo_scoped_client_config` is an audit/export fallback. A conflicting `project_path` returns `repo_scope_conflict`. Repo-scoped endpoints currently allow file/status tools and reject high-risk semantic navigation tools that are not proven sub-root safe.
 
 ## Response Format
 
@@ -381,9 +381,10 @@ Discover Codex Desktop workspace roots from Codex local state, resolve them to G
 | `dryRun` | boolean | no | Preview the attach plan without mutating the workspace |
 | `codex_state_path` | string | no | Absolute path to the Codex global state JSON file |
 | `includeWorktrees` | boolean | no | Include Git worktrees for each discovered repo, default true |
+| `installCodexMcp` | boolean | no | Install broad plus repo-scoped Codex MCP registrations after sync; dry-run returns commands only |
 | `project_path` | string | no | Workspace project path |
 
-**Returns**: `{ codexStatePath, dryRun, discovered, accepted, alreadyAttached, attached, skipped, errors, message }`
+**Returns**: `{ codexStatePath, dryRun, discovered, accepted, alreadyAttached, attached, skipped, errors, codexMcpRegistration?, message }`
 
 ### ide_detach_repo_from_workspace
 Detach a repo content root from the workspace by repo id.
@@ -404,6 +405,16 @@ Export Codex install commands for the broad server plus all currently published 
 | `project_path` | string | no | Workspace project path |
 
 **Returns**: `{ client, servers: [{name, url, repoId?, repoRootPath?}], installCommands, message }`
+
+### ide_install_repo_scoped_codex_config
+Run generated `codex mcp` commands for the broad server plus all currently published repo-scoped Git repo servers. Aggregate workspace folders and nested package content roots are omitted unless they have their own `.git` marker.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `dryRun` | boolean | no | Return generated commands without running them |
+| `project_path` | string | no | Workspace project path |
+
+**Returns**: `{ dryRun, servers: [{name, url, repoId?, repoRootPath?}], commands, succeeded, failures, message }`
 
 ### ide_set_power_save_mode (disabled by default)
 Enable or disable IDE Power Save Mode (IDE-wide). Suspends background inspections and code analysis; the index and code intelligence tools stay functional.

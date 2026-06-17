@@ -1,7 +1,9 @@
 package com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project
 
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.constants.ToolNames
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.CodexMcpRegistrationInstaller
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.CodexWorkspaceSyncService
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.RepoScopeRegistry
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.models.ToolCallResult
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.AbstractMcpTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.models.CodexWorkspaceSyncResult
@@ -20,7 +22,7 @@ class SyncCodexWorkspaceReposTool : AbstractMcpTool() {
     override val description = """
         Discover open Codex workspace roots from Codex desktop state, expand Git worktrees, and attach missing Git repo roots to the current IntelliJ Workspace project.
 
-        Parameters: dryRun (optional, default false), codex_state_path (optional), includeWorktrees (optional, default true), project_path (optional workspace project path).
+        Parameters: dryRun (optional, default false), codex_state_path (optional), includeWorktrees (optional, default true), installCodexMcp (optional, default false), project_path (optional workspace project path).
     """.trimIndent()
 
     override val inputSchema: JsonObject = SchemaBuilder.tool()
@@ -28,6 +30,7 @@ class SyncCodexWorkspaceReposTool : AbstractMcpTool() {
         .booleanProperty("dryRun", "Preview the Codex repo sync without attaching missing repos. Default: false.")
         .stringProperty("codex_state_path", "Absolute path to the Codex global state JSON file. Defaults to the current user's Codex state.")
         .booleanProperty("includeWorktrees", "Include Git worktrees for each discovered repo. Default: true.")
+        .booleanProperty("installCodexMcp", "Install generated Codex MCP registrations after repo sync. In dryRun mode, only returns commands. Default: false.")
         .build()
 
     override suspend fun doExecute(project: Project, arguments: JsonObject): ToolCallResult {
@@ -36,10 +39,11 @@ class SyncCodexWorkspaceReposTool : AbstractMcpTool() {
             codexStatePath = optionalStringArg(arguments, "codex_state_path"),
             includeWorktrees = arguments["includeWorktrees"]?.jsonPrimitive?.booleanOrNull ?: true
         )
+        val installCodexMcp = arguments["installCodexMcp"]?.jsonPrimitive?.booleanOrNull ?: false
 
         val result = try {
             val prepared = CodexWorkspaceSyncService.prepare(project, options)
-            if (options.dryRun) {
+            val syncResult = if (options.dryRun) {
                 CodexWorkspaceSyncService.buildResult(prepared, attached = emptyList(), errors = emptyList())
             } else {
                 edtAction {
@@ -47,6 +51,20 @@ class SyncCodexWorkspaceReposTool : AbstractMcpTool() {
                         CodexWorkspaceSyncService.applyPrepared(project, prepared)
                     }
                 }
+            }
+            if (installCodexMcp) {
+                val plannedScopeRoots = (prepared.existingRepoRoots + prepared.plan.accepted.map { it.repoRootPath }).distinct()
+                val registrationPlan = CodexMcpRegistrationInstaller.buildPlan(
+                    repoScopes = RepoScopeRegistry.buildScopes(plannedScopeRoots, prepared.workspaceProjectPath)
+                )
+                syncResult.copy(
+                    codexMcpRegistration = CodexMcpRegistrationInstaller.install(
+                        dryRun = options.dryRun,
+                        plan = registrationPlan
+                    )
+                )
+            } else {
+                syncResult
             }
         } catch (e: Exception) {
             return createErrorResult(e.message ?: "Codex workspace sync failed.")

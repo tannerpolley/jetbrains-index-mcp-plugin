@@ -2,13 +2,11 @@ package com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project
 
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.constants.ParamNames
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.constants.ToolNames
-import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.RepoScopeRegistry
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.CodexMcpRegistrationInstaller
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.models.ToolCallResult
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.AbstractMcpTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.models.RepoScopedClientConfigResult
-import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.models.RepoScopedClientServer
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.schema.SchemaBuilder
-import com.github.hechtcarmel.jetbrainsindexmcpplugin.util.ClientConfigGenerator
 import com.intellij.openapi.project.Project
 import kotlinx.serialization.json.JsonObject
 
@@ -34,35 +32,14 @@ class GetRepoScopedClientConfigTool : AbstractMcpTool() {
             return createErrorResult("Unsupported client '$client'. Supported client: codex.")
         }
 
-        val broadServerName = ClientConfigGenerator.getDefaultServerName()
-        val broadUrl = ClientConfigGenerator.getStreamableHttpUrl()
-        val scopes = RepoScopeRegistry.collectOpenRepoScopes()
-        val servers = mutableListOf(
-            RepoScopedClientServer(
-                name = broadServerName,
-                url = broadUrl
-            )
-        )
-
-        for (scope in scopes.sortedBy { it.repoId }) {
-            servers += RepoScopedClientServer(
-                name = "$broadServerName-${scope.repoId}",
-                url = ClientConfigGenerator.buildRepoScopedStreamableHttpUrl(broadUrl, scope.repoId),
-                repoId = scope.repoId,
-                repoRootPath = scope.repoRootPath
-            )
-        }
+        val plan = CodexMcpRegistrationInstaller.buildPlan()
 
         return createJsonResult(
             RepoScopedClientConfigResult(
                 client = client,
-                servers = servers,
-                installCommands = ClientConfigGenerator.buildRepoScopedCodexCommands(
-                    broadStreamableHttpUrl = broadUrl,
-                    broadServerName = broadServerName,
-                    repoScopes = scopes
-                ),
-                message = "Exported broad plus ${scopes.size} repo-scoped Codex MCP server registrations."
+                servers = plan.servers,
+                installCommands = plan.commands,
+                message = "Exported broad plus ${plan.servers.count { it.repoId != null }} repo-scoped Codex MCP server registrations."
             )
         )
     }

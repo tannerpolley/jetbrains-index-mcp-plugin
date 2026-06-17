@@ -3,6 +3,7 @@ package com.github.hechtcarmel.jetbrainsindexmcpplugin.startup
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.McpBundle
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.McpConstants
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.BuildDiagnosticsCacheService
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.CodexMcpRegistrationInstaller
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.CodexWorkspaceSyncService
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.McpServerService
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.settings.McpSettings
@@ -77,6 +78,7 @@ class McpServerStartupActivity : ProjectActivity {
                 val prepared = CodexWorkspaceSyncService.prepare(project)
                 if (prepared.options.dryRun || prepared.plan.toAttach.isEmpty()) {
                     LOG.info("Codex workspace auto-sync found no missing repo roots for project: ${project.name}")
+                    maybeInstallCodexMcpRegistrations(project)
                     return@executeOnPooledThread
                 }
 
@@ -90,12 +92,34 @@ class McpServerStartupActivity : ProjectActivity {
                             "Codex workspace auto-sync completed for ${project.name}: " +
                                 "attached=${result.attached.size}, errors=${result.errors.size}, skipped=${result.skipped.size}"
                         )
+                        maybeInstallCodexMcpRegistrations(project)
                     } catch (e: Exception) {
                         LOG.warn("Codex workspace auto-sync failed while attaching repos for ${project.name}", e)
                     }
                 }, ModalityState.nonModal())
             } catch (e: Exception) {
                 LOG.warn("Codex workspace auto-sync failed while preparing repos for ${project.name}", e)
+            }
+        }
+    }
+
+    private fun maybeInstallCodexMcpRegistrations(project: Project) {
+        if (!McpSettings.getInstance().autoInstallCodexMcpRegistrations) return
+        if (project.isDisposed) return
+
+        ApplicationManager.getApplication().executeOnPooledThread {
+            try {
+                val result = CodexMcpRegistrationInstaller.install(dryRun = false)
+                if (result.failures.isEmpty()) {
+                    LOG.info("Codex MCP auto-registration completed: commands=${result.succeeded.size}")
+                } else {
+                    LOG.warn(
+                        "Codex MCP auto-registration completed with failures: " +
+                            "succeeded=${result.succeeded.size}, failures=${result.failures.size}"
+                    )
+                }
+            } catch (e: Exception) {
+                LOG.warn("Codex MCP auto-registration failed", e)
             }
         }
     }
