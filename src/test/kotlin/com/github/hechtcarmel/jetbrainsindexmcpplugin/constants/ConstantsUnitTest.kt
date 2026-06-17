@@ -23,6 +23,10 @@ class ConstantsUnitTest : TestCase() {
     fun testToolNamesProjectTools() {
         assertEquals("ide_index_status", ToolNames.INDEX_STATUS)
         assertEquals("ide_build_project", ToolNames.BUILD_PROJECT)
+        assertEquals("ide_attach_repo_to_workspace", ToolNames.ATTACH_REPO_TO_WORKSPACE)
+        assertEquals("ide_detach_repo_from_workspace", ToolNames.DETACH_REPO_FROM_WORKSPACE)
+        assertEquals("ide_get_repo_scoped_client_config", ToolNames.GET_REPO_SCOPED_CLIENT_CONFIG)
+        assertEquals("ide_sync_codex_workspace_repos", ToolNames.SYNC_CODEX_WORKSPACE_REPOS)
     }
 
     fun testToolNamesRefactoringTools() {
@@ -61,6 +65,10 @@ class ConstantsUnitTest : TestCase() {
             ToolNames.INDEX_STATUS,
             ToolNames.SYNC_FILES,
             ToolNames.BUILD_PROJECT,
+            ToolNames.ATTACH_REPO_TO_WORKSPACE,
+            ToolNames.DETACH_REPO_FROM_WORKSPACE,
+            ToolNames.GET_REPO_SCOPED_CLIENT_CONFIG,
+            ToolNames.SYNC_CODEX_WORKSPACE_REPOS,
             ToolNames.REFACTOR_RENAME,
             ToolNames.REFACTOR_SAFE_DELETE,
             ToolNames.REFACTOR_MOVE,

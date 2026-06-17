@@ -24,6 +24,7 @@ import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.InstallPlugi
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.OpenProjectTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.RestartIdeTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.SetPowerSaveModeTool
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.SyncCodexWorkspaceReposTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.SyncFilesTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.refactoring.MoveFileTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.refactoring.OptimizeImportsTool
@@ -245,6 +246,7 @@ class ToolRegistry {
         register(BuildProjectTool())
         register(AttachRepoToWorkspaceTool())
         register(DetachRepoFromWorkspaceTool())
+        register(SyncCodexWorkspaceReposTool())
         register(GetRepoScopedClientConfigTool())
         register(InstallPluginTool())
         register(RestartIdeTool())

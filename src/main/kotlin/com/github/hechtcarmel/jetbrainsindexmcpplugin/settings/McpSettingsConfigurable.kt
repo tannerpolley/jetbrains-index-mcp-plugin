@@ -48,6 +48,7 @@ class McpSettingsConfigurable : Configurable {
     private var maxHistorySizeSpinner: JSpinner? = null
     private var serverPortSpinner: JSpinner? = null
     private var syncExternalChangesCheckBox: JBCheckBox? = null
+    private var autoSyncCodexWorkspaceReposCheckBox: JBCheckBox? = null
     private var availableProjectsModeComboBox: ComboBox<McpSettings.AvailableProjectsMode>? = null
     private var responseFormatComboBox: ComboBox<McpSettings.ResponseFormat>? = null
     private val toolCheckBoxes = mutableMapOf<String, JBCheckBox>()
@@ -99,6 +100,9 @@ class McpSettingsConfigurable : Configurable {
         syncExternalChangesCheckBox = JBCheckBox(McpBundle.message("settings.syncExternalChanges")).apply {
             toolTipText = McpBundle.message("settings.syncExternalChanges.tooltip")
         }
+        autoSyncCodexWorkspaceReposCheckBox = JBCheckBox(McpBundle.message("settings.autoSyncCodexWorkspaceRepos")).apply {
+            toolTipText = McpBundle.message("settings.autoSyncCodexWorkspaceRepos.tooltip")
+        }
         availableProjectsModeComboBox = ComboBox(McpSettings.AvailableProjectsMode.values()).apply {
             toolTipText = McpBundle.message("settings.availableProjectsMode.tooltip")
             renderer = SimpleListCellRenderer.create("") { value ->
@@ -137,6 +141,7 @@ class McpSettingsConfigurable : Configurable {
             .addLabeledComponent(JBLabel(McpBundle.message("settings.maxHistorySize") + ":"), maxHistorySizeSpinner!!, 1, false)
             .addLabeledComponent(JBLabel(McpBundle.message("settings.availableProjectsMode") + ":"), availableProjectsModeComboBox!!, 1, false)
             .addLabeledComponent(JBLabel(McpBundle.message("settings.responseFormat") + ":"), responseFormatComboBox!!, 1, false)
+            .addComponent(autoSyncCodexWorkspaceReposCheckBox!!, 1)
             .addComponent(syncPanel, 1)
             .addSeparator(10)
             .addComponent(JBLabel(McpBundle.message("settings.tools.title")), 5)
@@ -182,6 +187,7 @@ class McpSettingsConfigurable : Configurable {
             serverPortSpinner?.value != settings.serverPort ||
             maxHistorySizeSpinner?.value != settings.maxHistorySize ||
             syncExternalChangesCheckBox?.isSelected != settings.syncExternalChanges ||
+            autoSyncCodexWorkspaceReposCheckBox?.isSelected != settings.autoSyncCodexWorkspaceRepos ||
             availableProjectsModeComboBox?.selectedItem != settings.availableProjectsMode ||
             responseFormatComboBox?.selectedItem != settings.responseFormat) {
             return true
@@ -237,6 +243,7 @@ class McpSettingsConfigurable : Configurable {
         settings.serverPort = newPort
         settings.maxHistorySize = maxHistorySizeSpinner?.value as? Int ?: 100
         settings.syncExternalChanges = syncExternalChangesCheckBox?.isSelected ?: false
+        settings.autoSyncCodexWorkspaceRepos = autoSyncCodexWorkspaceReposCheckBox?.isSelected ?: true
         settings.availableProjectsMode =
             availableProjectsModeComboBox?.selectedItem as? McpSettings.AvailableProjectsMode
                 ?: McpSettings.AvailableProjectsMode.EXPANDED
@@ -328,6 +335,7 @@ class McpSettingsConfigurable : Configurable {
         serverPortSpinner?.value = settings.serverPort
         maxHistorySizeSpinner?.value = settings.maxHistorySize
         syncExternalChangesCheckBox?.isSelected = settings.syncExternalChanges
+        autoSyncCodexWorkspaceReposCheckBox?.isSelected = settings.autoSyncCodexWorkspaceRepos
         availableProjectsModeComboBox?.selectedItem = settings.availableProjectsMode
         responseFormatComboBox?.selectedItem = settings.responseFormat
         
@@ -425,6 +433,7 @@ class McpSettingsConfigurable : Configurable {
         serverPortSpinner = null
         maxHistorySizeSpinner = null
         syncExternalChangesCheckBox = null
+        autoSyncCodexWorkspaceReposCheckBox = null
         availableProjectsModeComboBox = null
         responseFormatComboBox = null
         toolCheckBoxes.clear()

@@ -217,6 +217,34 @@ data class RepoScopedClientConfigResult(
     val message: String
 )
 
+@Serializable
+data class CodexWorkspaceRepoEntry(
+    val repoId: String,
+    val repoRootPath: String,
+    val source: String,
+    val repoScopedStreamableHttpUrl: String
+)
+
+@Serializable
+data class CodexWorkspaceSkippedPath(
+    val path: String,
+    val source: String,
+    val reason: String
+)
+
+@Serializable
+data class CodexWorkspaceSyncResult(
+    val codexStatePath: String,
+    val dryRun: Boolean,
+    val discovered: Int,
+    val accepted: List<CodexWorkspaceRepoEntry>,
+    val alreadyAttached: List<CodexWorkspaceRepoEntry>,
+    val attached: List<CodexWorkspaceRepoEntry>,
+    val skipped: List<CodexWorkspaceSkippedPath>,
+    val errors: List<CodexWorkspaceSkippedPath>,
+    val message: String
+)
+
 // ide_sync_files output
 @Serializable
 data class SyncFilesResult(

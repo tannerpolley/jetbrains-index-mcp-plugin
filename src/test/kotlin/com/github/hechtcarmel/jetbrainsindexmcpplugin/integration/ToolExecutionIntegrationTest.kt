@@ -485,6 +485,10 @@ class ToolExecutionIntegrationTest : BasePlatformTestCase() {
             ToolNames.BUILD_PROJECT,
             ToolNames.INDEX_STATUS,
             ToolNames.SYNC_FILES,
+            ToolNames.ATTACH_REPO_TO_WORKSPACE,
+            ToolNames.DETACH_REPO_FROM_WORKSPACE,
+            ToolNames.GET_REPO_SCOPED_CLIENT_CONFIG,
+            ToolNames.SYNC_CODEX_WORKSPACE_REPOS,
             // Refactoring tools
             ToolNames.REFACTOR_RENAME,
             ToolNames.REFACTOR_MOVE,

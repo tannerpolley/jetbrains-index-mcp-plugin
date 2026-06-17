@@ -11,6 +11,7 @@ class McpSettingsUnitTest : TestCase() {
 
         assertEquals("Default maxHistorySize should be 100", 100, state.maxHistorySize)
         assertFalse("Default syncExternalChanges should be false", state.syncExternalChanges)
+        assertTrue("Default autoSyncCodexWorkspaceRepos should be true", state.autoSyncCodexWorkspaceRepos)
         assertEquals("Default serverHost should be 127.0.0.1", "127.0.0.1", state.serverHost)
     }
 
@@ -37,16 +38,25 @@ class McpSettingsUnitTest : TestCase() {
         assertTrue(state.syncExternalChanges)
     }
 
+    fun testStateAutoSyncCodexWorkspaceReposMutable() {
+        val state = McpSettings.State()
+        state.autoSyncCodexWorkspaceRepos = false
+
+        assertFalse(state.autoSyncCodexWorkspaceRepos)
+    }
+
     // State custom constructor tests
 
     fun testStateCustomConstructor() {
         val state = McpSettings.State(
             maxHistorySize = 500,
-            syncExternalChanges = true
+            syncExternalChanges = true,
+            autoSyncCodexWorkspaceRepos = false
         )
 
         assertEquals(500, state.maxHistorySize)
         assertTrue(state.syncExternalChanges)
+        assertFalse(state.autoSyncCodexWorkspaceRepos)
     }
 
     // State copy tests
@@ -58,6 +68,7 @@ class McpSettingsUnitTest : TestCase() {
         assertEquals(50, original.maxHistorySize)
         assertEquals(150, copy.maxHistorySize)
         assertEquals(original.syncExternalChanges, copy.syncExternalChanges)
+        assertEquals(original.autoSyncCodexWorkspaceRepos, copy.autoSyncCodexWorkspaceRepos)
     }
 
     // State equals and hashCode tests
@@ -98,22 +109,26 @@ class McpSettingsUnitTest : TestCase() {
 
         settings.maxHistorySize = 250
         settings.syncExternalChanges = true
+        settings.autoSyncCodexWorkspaceRepos = false
 
         assertEquals(250, settings.maxHistorySize)
         assertTrue(settings.syncExternalChanges)
+        assertFalse(settings.autoSyncCodexWorkspaceRepos)
     }
 
     fun testMcpSettingsLoadState() {
         val settings = McpSettings()
         val newState = McpSettings.State(
             maxHistorySize = 75,
-            syncExternalChanges = true
+            syncExternalChanges = true,
+            autoSyncCodexWorkspaceRepos = false
         )
 
         settings.loadState(newState)
 
         assertEquals(75, settings.maxHistorySize)
         assertTrue(settings.syncExternalChanges)
+        assertFalse(settings.autoSyncCodexWorkspaceRepos)
     }
 
     fun testMcpSettingsGetStateReturnsCurrentState() {
