@@ -103,6 +103,7 @@ class CodexWorkspaceSyncServiceUnitTest : TestCase() {
         assertEquals(1, plan.accepted.size)
         assertEquals(1, plan.alreadyAttached.size)
         assertTrue(plan.toAttach.isEmpty())
+        assertTrue(plan.toDetach.isEmpty())
     }
 
     fun testBuildPlanSkipsMissingAndPlainDirectories() {
@@ -155,6 +156,7 @@ class CodexWorkspaceSyncServiceUnitTest : TestCase() {
             listOf("github_owner_mismatch:ePC-SAFT", "git_remote_missing"),
             plan.skipped.map { it.reason }
         )
+        assertTrue(plan.toDetach.isEmpty())
     }
 
     fun testGithubOwnerFromRemoteUrlSupportsCommonGitHubRemoteFormats() {
@@ -188,6 +190,138 @@ class CodexWorkspaceSyncServiceUnitTest : TestCase() {
         )
 
         assertEquals(listOf(repo.absolutePath.replace('\\', '/')), plan.toAttach.map { it.repoRootPath })
+        assertTrue(plan.toDetach.isEmpty())
+    }
+
+    fun testBuildPlanDetachesExistingReposNotAcceptedByCodexState() {
+        val workspace = createGitRepo("Workspace")
+        val keep = createGitRepo("keep-repo")
+        val stale = createGitRepo("stale-repo")
+
+        val plan = CodexWorkspaceSyncService.buildPlan(
+            candidates = listOf(CodexWorkspaceSyncService.Candidate(keep.absolutePath, "active-workspace-roots")),
+            existingRepoRoots = listOf(workspace.absolutePath, keep.absolutePath, stale.absolutePath),
+            workspaceProjectPath = workspace.absolutePath.replace('\\', '/'),
+            includeWorktrees = false
+        )
+
+        assertEquals(listOf(keep.absolutePath.replace('\\', '/')), plan.accepted.map { it.repoRootPath })
+        assertEquals(listOf(keep.absolutePath.replace('\\', '/')), plan.alreadyAttached.map { it.repoRootPath })
+        assertTrue(plan.toAttach.isEmpty())
+        assertEquals(listOf(stale.absolutePath.replace('\\', '/')), plan.toDetach.map { it.repoRootPath })
+        assertTrue(plan.toDetach.none { it.repoRootPath == workspace.absolutePath.replace('\\', '/') })
+    }
+
+    fun testBuildPlanDetachesStaleWorkspaceModulesNotAcceptedByCodexState() {
+        val workspace = createGitRepo("Workspace")
+        val keep = createGitRepo("keep-repo")
+        val staleModuleFile = File(workspace, ".idea/stale-repo.iml").also {
+            it.parentFile.mkdirs()
+            it.writeText("<module />")
+        }
+
+        val plan = CodexWorkspaceSyncService.buildPlan(
+            candidates = listOf(CodexWorkspaceSyncService.Candidate(keep.absolutePath, "active-workspace-roots")),
+            existingRepoRoots = listOf(keep.absolutePath),
+            workspaceProjectPath = workspace.absolutePath.replace('\\', '/'),
+            existingModules = listOf(
+                WorkspaceModuleScope(
+                    moduleName = "keep-repo",
+                    moduleFilePath = File(workspace, ".idea/keep-repo.iml").absolutePath.replace('\\', '/'),
+                    inferredRepoRootPath = keep.absolutePath.replace('\\', '/')
+                ),
+                WorkspaceModuleScope(
+                    moduleName = "stale-repo",
+                    moduleFilePath = staleModuleFile.absolutePath.replace('\\', '/'),
+                    inferredRepoRootPath = null
+                )
+            ),
+            includeWorktrees = false
+        )
+
+        assertEquals(listOf("stale-repo"), plan.toDetachModules.map { it.moduleName })
+    }
+
+    fun testBuildPlanDetachesStaleWorkspaceModuleFilesNotAcceptedByCodexState() {
+        val workspace = createGitRepo("Workspace")
+        val keep = createGitRepo("keep-repo")
+        val staleModuleFile = File(workspace, ".idea/stale-repo.iml").also {
+            it.parentFile.mkdirs()
+            it.writeText("<module />")
+        }
+
+        val plan = CodexWorkspaceSyncService.buildPlan(
+            candidates = listOf(CodexWorkspaceSyncService.Candidate(keep.absolutePath, "active-workspace-roots")),
+            existingRepoRoots = listOf(keep.absolutePath),
+            workspaceProjectPath = workspace.absolutePath.replace('\\', '/'),
+            existingModules = listOf(
+                WorkspaceModuleScope(
+                    moduleName = "stale-repo",
+                    moduleFilePath = staleModuleFile.absolutePath.replace('\\', '/'),
+                    inferredRepoRootPath = null,
+                    isAttached = false
+                )
+            ),
+            includeWorktrees = false
+        )
+
+        assertEquals(listOf("stale-repo"), plan.toDetachModules.map { it.moduleName })
+        assertFalse(plan.toDetachModules.single().isAttached)
+    }
+
+    fun testBuildPlanKeepsAcceptedWorkspaceModuleFileByRepoId() {
+        val workspace = createGitRepo("Workspace")
+        val keep = createGitRepo("keep-repo")
+        val keepModuleFile = File(workspace, ".idea/keep-repo.iml").also {
+            it.parentFile.mkdirs()
+            it.writeText("<module />")
+        }
+
+        val plan = CodexWorkspaceSyncService.buildPlan(
+            candidates = listOf(CodexWorkspaceSyncService.Candidate(keep.absolutePath, "active-workspace-roots")),
+            existingRepoRoots = listOf(keep.absolutePath),
+            workspaceProjectPath = workspace.absolutePath.replace('\\', '/'),
+            existingModules = listOf(
+                WorkspaceModuleScope(
+                    moduleName = "keep-repo",
+                    moduleFilePath = keepModuleFile.absolutePath.replace('\\', '/'),
+                    inferredRepoRootPath = null,
+                    isAttached = false
+                )
+            ),
+            includeWorktrees = false
+        )
+
+        assertTrue(plan.toDetachModules.isEmpty())
+    }
+
+    fun testBuildPlanCanDisableDetachWhenCodexDiscoveryFailed() {
+        val workspace = createGitRepo("Workspace")
+        val stale = createGitRepo("stale-repo")
+        val staleModuleFile = File(workspace, ".idea/stale-repo.iml").also {
+            it.parentFile.mkdirs()
+            it.writeText("<module />")
+        }
+
+        val plan = CodexWorkspaceSyncService.buildPlan(
+            candidates = emptyList(),
+            existingRepoRoots = listOf(workspace.absolutePath, stale.absolutePath),
+            workspaceProjectPath = workspace.absolutePath.replace('\\', '/'),
+            existingModules = listOf(
+                WorkspaceModuleScope(
+                    moduleName = "stale-repo",
+                    moduleFilePath = staleModuleFile.absolutePath.replace('\\', '/'),
+                    inferredRepoRootPath = null
+                )
+            ),
+            includeWorktrees = false,
+            pruneStaleAttached = false
+        )
+
+        assertTrue(plan.accepted.isEmpty())
+        assertTrue(plan.toAttach.isEmpty())
+        assertTrue(plan.toDetach.isEmpty())
+        assertTrue(plan.toDetachModules.isEmpty())
     }
 
     private fun createGitRepo(name: String): File {

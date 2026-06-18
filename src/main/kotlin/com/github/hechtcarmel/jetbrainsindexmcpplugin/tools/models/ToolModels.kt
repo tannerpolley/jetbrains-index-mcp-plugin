@@ -243,6 +243,14 @@ data class CodexWorkspaceRepoEntry(
 )
 
 @Serializable
+data class CodexWorkspaceModuleEntry(
+    val moduleName: String,
+    val moduleFilePath: String,
+    val inferredRepoRootPath: String? = null,
+    val source: String
+)
+
+@Serializable
 data class CodexWorkspaceSkippedPath(
     val path: String,
     val source: String,
@@ -257,6 +265,12 @@ data class CodexWorkspaceSyncResult(
     val accepted: List<CodexWorkspaceRepoEntry>,
     val alreadyAttached: List<CodexWorkspaceRepoEntry>,
     val attached: List<CodexWorkspaceRepoEntry>,
+    val toDetach: List<CodexWorkspaceRepoEntry> = emptyList(),
+    val detached: List<CodexWorkspaceRepoEntry> = emptyList(),
+    val toDetachModules: List<CodexWorkspaceModuleEntry> = emptyList(),
+    val detachedModules: List<CodexWorkspaceModuleEntry> = emptyList(),
+    val runConfigurationsImported: Int = 0,
+    val runConfigurationsRemoved: Int = 0,
     val skipped: List<CodexWorkspaceSkippedPath>,
     val errors: List<CodexWorkspaceSkippedPath>,
     val codexMcpRegistration: CodexMcpRegistrationResult? = null,

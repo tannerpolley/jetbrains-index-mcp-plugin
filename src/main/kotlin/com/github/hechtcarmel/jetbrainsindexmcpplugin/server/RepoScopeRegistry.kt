@@ -78,12 +78,61 @@ object RepoScopeRegistry {
             .filter { !it.isDefault }
 
         for (project in openProjects) {
-            val workspaceProjectPath = project.basePath?.let { normalizeRepoRootPath(it) }
-            val rootPaths = collectRepoRootPaths(project)
-            scopes += buildScopes(rootPaths, workspaceProjectPath)
+            scopes += collectProjectRepoScopes(project)
         }
 
         return scopes.distinctBy { it.repoId }
+    }
+
+    fun collectProjectRepoScopes(project: Project): List<RepoScope> {
+        val workspaceProjectPath = project.basePath?.let { normalizeRepoRootPath(it) }
+        return buildScopes(collectRepoRootPaths(project), workspaceProjectPath)
+    }
+
+    fun collectProjectWorkspaceModules(project: Project): List<WorkspaceModuleScope> {
+        if (ApplicationManager.getApplication() == null) {
+            return emptyList()
+        }
+
+        val modules = try {
+            ModuleManager.getInstance(project).modules.toList()
+        } catch (e: Exception) {
+            LOG.debug("Failed to collect workspace modules for project ${project.name}", e)
+            return emptyList()
+        }
+
+        val attachedModules = modules.map { module ->
+            val moduleFilePath = normalizeRepoRootPath(module.moduleFile?.path ?: module.moduleFilePath)
+            val contentGitRoot = ModuleRootManager.getInstance(module).contentRoots
+                .map { normalizeRepoRootPath(it.path) }
+                .firstOrNull { isGitRepoRootPath(it) }
+            WorkspaceModuleScope(
+                moduleName = module.name,
+                moduleFilePath = moduleFilePath,
+                inferredRepoRootPath = contentGitRoot ?: inferRepoRootFromModuleFilePath(moduleFilePath)
+            )
+        }
+
+        val attachedModuleFiles = attachedModules
+            .mapTo(mutableSetOf()) { normalizeRepoRootPath(it.moduleFilePath).lowercase() }
+        val workspaceRoot = project.basePath?.let { normalizeRepoRootPath(it) }
+        val orphanWorkspaceModuleFiles = workspaceRoot
+            ?.let { File(it, ".idea") }
+            ?.listFiles { file -> file.isFile && file.extension.equals("iml", ignoreCase = true) }
+            ?.map { file -> normalizeRepoRootPath(file.absolutePath) }
+            ?.filterNot { path -> path.lowercase() in attachedModuleFiles }
+            ?.map { moduleFilePath ->
+                WorkspaceModuleScope(
+                    moduleName = File(moduleFilePath).nameWithoutExtension,
+                    moduleFilePath = moduleFilePath,
+                    inferredRepoRootPath = inferRepoRootFromModuleFilePath(moduleFilePath),
+                    isAttached = false
+                )
+            }
+            ?: emptyList()
+
+        return (attachedModules + orphanWorkspaceModuleFiles)
+            .distinctBy { normalizeRepoRootPath(it.moduleFilePath).lowercase() }
     }
 
     fun resolveOpenRepoScope(repoId: String): RepoScope? =
@@ -119,4 +168,14 @@ object RepoScopeRegistry {
             .replace(Regex("[^A-Za-z0-9._-]+"), "-")
             .trim('-')
             .ifBlank { "repo" }
+
+    private fun inferRepoRootFromModuleFilePath(moduleFilePath: String): String? {
+        val moduleFile = File(normalizeRepoRootPath(moduleFilePath))
+        val ideaDir = moduleFile.parentFile ?: return null
+        if (ideaDir.name != ".idea") return null
+
+        val repoRoot = ideaDir.parentFile ?: return null
+        val normalizedRepoRoot = normalizeRepoRootPath(repoRoot.path)
+        return normalizedRepoRoot.takeIf { isGitRepoRootPath(it) }
+    }
 }

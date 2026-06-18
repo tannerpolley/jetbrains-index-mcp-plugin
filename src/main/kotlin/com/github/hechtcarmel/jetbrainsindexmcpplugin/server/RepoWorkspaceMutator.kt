@@ -52,18 +52,32 @@ object RepoWorkspaceMutator {
         val scope = RepoScopeRegistry.resolveOpenRepoScope(repoId)
             ?: throw IllegalArgumentException("Repo id is not attached to the open workspace: $repoId")
 
+        detachContentRootPath(project, scope.repoRootPath)
+        return scope
+    }
+
+    fun detachContentRootPath(project: Project, repoRootPath: String): RepoScope {
+        val normalizedRepoPath = RepoScopeRegistry.normalizeRepoRootPath(repoRootPath)
+        val scope = RepoScopeRegistry.scopeForPath(normalizedRepoPath)
+            ?: RepoScope(
+                repoId = File(normalizedRepoPath).name,
+                repoRootPath = normalizedRepoPath,
+                workspaceProjectPath = project.basePath?.let { RepoScopeRegistry.normalizeRepoRootPath(it) }
+            )
+
         val workspaceRoot = project.basePath?.let { RepoScopeRegistry.normalizeRepoRootPath(it) }
-        if (scope.repoRootPath == workspaceRoot) {
-            throw IllegalArgumentException("Cannot detach the workspace project root: ${scope.repoRootPath}")
+        if (normalizedRepoPath == workspaceRoot) {
+            throw IllegalArgumentException("Cannot detach the workspace project root: $normalizedRepoPath")
         }
 
         var removed = false
+        val modulesToDispose = mutableListOf<Module>()
         for (module in ModuleManager.getInstance(project).modules) {
             val model = ModuleRootManager.getInstance(module).modifiableModel
             var committed = false
             try {
                 val entries = model.contentEntries.filter { entry ->
-                    entry.file?.path?.let { RepoScopeRegistry.normalizeRepoRootPath(it) } == scope.repoRootPath
+                    entry.file?.path?.let { RepoScopeRegistry.normalizeRepoRootPath(it) } == normalizedRepoPath
                 }
                 if (entries.isEmpty()) {
                     model.dispose()
@@ -77,6 +91,9 @@ object RepoWorkspaceMutator {
                 model.commit()
                 committed = true
                 removed = true
+                if (ModuleRootManager.getInstance(module).contentRoots.isEmpty()) {
+                    modulesToDispose += module
+                }
             } finally {
                 if (!committed) {
                     model.dispose()
@@ -85,9 +102,50 @@ object RepoWorkspaceMutator {
         }
 
         if (!removed) {
-            throw IllegalArgumentException("Repo id '$repoId' resolved to '${scope.repoRootPath}', but no matching content root was attached.")
+            throw IllegalArgumentException("Repo root '$normalizedRepoPath' is not attached as a content root.")
         }
 
+        disposeModules(project, modulesToDispose)
+        return scope
+    }
+
+    fun detachWorkspaceModule(project: Project, requestedScope: WorkspaceModuleScope): WorkspaceModuleScope {
+        val moduleManager = ModuleManager.getInstance(project)
+        val requestedModuleFilePath = RepoScopeRegistry.normalizeRepoRootPath(requestedScope.moduleFilePath)
+        val module = moduleManager.findModuleByName(requestedScope.moduleName)
+            ?.takeIf { found ->
+                requestedScope.isAttached ||
+                    RepoScopeRegistry.normalizeRepoRootPath(found.moduleFile?.path ?: found.moduleFilePath) == requestedModuleFilePath
+            }
+
+        val scope = module
+            ?.let { found ->
+                RepoScopeRegistry.collectProjectWorkspaceModules(project)
+                    .find {
+                        it.moduleName == requestedScope.moduleName &&
+                            RepoScopeRegistry.normalizeRepoRootPath(it.moduleFilePath) == requestedModuleFilePath
+                    }
+                    ?: requestedScope.copy(
+                        moduleFilePath = RepoScopeRegistry.normalizeRepoRootPath(found.moduleFile?.path ?: found.moduleFilePath),
+                        isAttached = true
+                    )
+            }
+            ?: requestedScope
+
+        if (module == null && scope.isAttached) {
+            throw IllegalArgumentException("Workspace module is not attached: ${scope.moduleName}")
+        }
+
+        val workspaceRoot = project.basePath?.let { RepoScopeRegistry.normalizeRepoRootPath(it) }
+        if (scope.inferredRepoRootPath != null && scope.inferredRepoRootPath == workspaceRoot) {
+            throw IllegalArgumentException("Cannot detach the workspace project module: ${scope.moduleName}")
+        }
+
+        if (module != null) {
+            disposeModules(project, listOf(module))
+        } else {
+            deleteWorkspaceOwnedModuleFile(project, scope.moduleFilePath)
+        }
         return scope
     }
 
@@ -150,6 +208,49 @@ object RepoWorkspaceMutator {
                 moduleModel.dispose()
             }
         }
+    }
+
+    private fun disposeModules(project: Project, modules: List<Module>) {
+        val distinctModules = modules.distinct()
+        if (distinctModules.isEmpty()) {
+            return
+        }
+        val moduleFilePaths = distinctModules
+            .map { module -> RepoScopeRegistry.normalizeRepoRootPath(module.moduleFile?.path ?: module.moduleFilePath) }
+
+        val moduleModel = ModuleManager.getInstance(project).getModifiableModel()
+        var committed = false
+        try {
+            for (module in distinctModules) {
+                if (!module.isDisposed) {
+                    moduleModel.disposeModule(module)
+                }
+            }
+            moduleModel.commit()
+            committed = true
+        } finally {
+            if (!committed) {
+                moduleModel.dispose()
+            }
+        }
+
+        for (moduleFilePath in moduleFilePaths) {
+            deleteWorkspaceOwnedModuleFile(project, moduleFilePath)
+        }
+    }
+
+    private fun deleteWorkspaceOwnedModuleFile(project: Project, moduleFilePath: String) {
+        val workspaceRoot = project.basePath?.let { RepoScopeRegistry.normalizeRepoRootPath(it) } ?: return
+        val normalizedModuleFilePath = RepoScopeRegistry.normalizeRepoRootPath(moduleFilePath)
+        if (!normalizedModuleFilePath.startsWith("$workspaceRoot/.idea/") || !normalizedModuleFilePath.endsWith(".iml")) {
+            return
+        }
+
+        val moduleFile = File(normalizedModuleFilePath)
+        if (moduleFile.exists() && !moduleFile.delete()) {
+            throw IllegalStateException("Failed to delete stale Workspace module file: $normalizedModuleFilePath")
+        }
+        LocalFileSystem.getInstance().refreshAndFindFileByPath(normalizedModuleFilePath)
     }
 
     fun persistWorkspaceProject(project: Project) {

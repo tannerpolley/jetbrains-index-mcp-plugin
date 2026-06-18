@@ -77,25 +77,23 @@ class McpServerStartupActivity : ProjectActivity {
         app.executeOnPooledThread {
             try {
                 val prepared = CodexWorkspaceSyncService.prepare(project)
-                if (prepared.options.dryRun || prepared.plan.toAttach.isEmpty()) {
-                    LOG.info("Codex workspace auto-sync found no missing repo roots for project: ${project.name}")
-                    maybeInstallCodexMcpRegistrations(project, prepared)
-                    return@executeOnPooledThread
-                }
-
                 app.invokeLater({
                     if (project.isDisposed) return@invokeLater
                     try {
                         val result = app.runWriteAction<com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.models.CodexWorkspaceSyncResult> {
                             CodexWorkspaceSyncService.applyPrepared(project, prepared)
                         }
+                        app.executeOnPooledThread {
+                            CodexWorkspaceSyncService.persistAppliedChanges(project, result)
+                        }
                         LOG.info(
                             "Codex workspace auto-sync completed for ${project.name}: " +
-                                "attached=${result.attached.size}, errors=${result.errors.size}, skipped=${result.skipped.size}"
+                                "attached=${result.attached.size}, detached=${result.detached.size}, detachedModules=${result.detachedModules.size}, " +
+                                "runConfigsImported=${result.runConfigurationsImported}, runConfigsRemoved=${result.runConfigurationsRemoved}, errors=${result.errors.size}, skipped=${result.skipped.size}"
                         )
                         maybeInstallCodexMcpRegistrations(project, prepared)
                     } catch (e: Exception) {
-                        LOG.warn("Codex workspace auto-sync failed while attaching repos for ${project.name}", e)
+                        LOG.warn("Codex workspace auto-sync failed while reconciling repos for ${project.name}", e)
                     }
                 }, ModalityState.nonModal())
             } catch (e: Exception) {

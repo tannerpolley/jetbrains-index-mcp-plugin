@@ -20,14 +20,14 @@ class SyncCodexWorkspaceReposTool : AbstractMcpTool() {
     override val name = ToolNames.SYNC_CODEX_WORKSPACE_REPOS
 
     override val description = """
-        Discover open Codex workspace roots from Codex desktop state, expand Git worktrees, and attach missing Git repo roots to the current IntelliJ Workspace project.
+        Discover open Codex workspace roots from Codex desktop state, expand Git worktrees, attach accepted Git repo roots to the current IntelliJ Workspace project, detach stale Workspace repo roots that are no longer accepted, and synchronize accepted repo .run configurations into Services.
 
         Parameters: dryRun (optional, default false), codex_state_path (optional), includeWorktrees (optional, default true), installCodexMcp (optional, default false), githubOwner (optional), project_path (optional workspace project path).
     """.trimIndent()
 
     override val inputSchema: JsonObject = SchemaBuilder.tool()
         .projectPath()
-        .booleanProperty("dryRun", "Preview the Codex repo sync without attaching missing repos. Default: false.")
+        .booleanProperty("dryRun", "Preview the Codex repo reconciliation without attaching or detaching repos. Default: false.")
         .stringProperty("codex_state_path", "Absolute path to the Codex global state JSON file. Defaults to the current user's Codex state.")
         .booleanProperty("includeWorktrees", "Include Git worktrees for each discovered repo. Default: true.")
         .booleanProperty("installCodexMcp", "Install generated Codex MCP registrations after repo sync. In dryRun mode, only returns commands. Default: false.")
@@ -46,13 +46,13 @@ class SyncCodexWorkspaceReposTool : AbstractMcpTool() {
         val result = try {
             val prepared = CodexWorkspaceSyncService.prepare(project, options)
             val syncResult = if (options.dryRun) {
-                CodexWorkspaceSyncService.buildResult(prepared, attached = emptyList(), errors = emptyList())
+                CodexWorkspaceSyncService.buildResult(prepared, attached = emptyList(), detached = emptyList(), detachedModules = emptyList(), errors = emptyList())
             } else {
                 edtAction {
                     ApplicationManager.getApplication().runWriteAction<CodexWorkspaceSyncResult> {
                         CodexWorkspaceSyncService.applyPrepared(project, prepared)
                     }
-                }
+                }.also { CodexWorkspaceSyncService.persistAppliedChanges(project, it) }
             }
             if (installCodexMcp) {
                 val plannedScopeRoots = prepared.plan.accepted.map { it.repoRootPath }.distinct()

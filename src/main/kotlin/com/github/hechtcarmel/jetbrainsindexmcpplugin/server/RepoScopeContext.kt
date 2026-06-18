@@ -9,6 +9,13 @@ data class RepoScope(
     val workspaceProjectPath: String?
 )
 
+data class WorkspaceModuleScope(
+    val moduleName: String,
+    val moduleFilePath: String,
+    val inferredRepoRootPath: String?,
+    val isAttached: Boolean = true
+)
+
 object RepoScopeContext {
     private val currentScope = ThreadLocal<RepoScope?>()
 

@@ -35,29 +35,28 @@ class SyncCodexWorkspaceReposAction : AnAction(
         app.executeOnPooledThread {
             try {
                 val prepared = CodexWorkspaceSyncService.prepare(project)
-                val syncResult = if (prepared.plan.toAttach.isEmpty()) {
-                    CodexWorkspaceSyncService.buildResult(prepared, attached = emptyList(), errors = emptyList())
-                } else {
-                    var result: CodexWorkspaceSyncResult? = null
-                    app.invokeAndWait({
-                        if (!project.isDisposed) {
-                            result = app.runWriteAction<CodexWorkspaceSyncResult> {
-                                CodexWorkspaceSyncService.applyPrepared(project, prepared)
-                            }
+                var result: CodexWorkspaceSyncResult? = null
+                app.invokeAndWait({
+                    if (!project.isDisposed) {
+                        result = app.runWriteAction<CodexWorkspaceSyncResult> {
+                            CodexWorkspaceSyncService.applyPrepared(project, prepared)
                         }
-                    }, ModalityState.nonModal())
-                    result ?: CodexWorkspaceSyncService.buildResult(
-                        prepared,
-                        attached = emptyList(),
-                        errors = listOf(
-                            com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.models.CodexWorkspaceSkippedPath(
-                                path = project.basePath.orEmpty(),
-                                source = "workspace-sync-action",
-                                reason = "project_disposed"
-                            )
+                    }
+                }, ModalityState.nonModal())
+                result?.let { CodexWorkspaceSyncService.persistAppliedChanges(project, it) }
+                val syncResult = result ?: CodexWorkspaceSyncService.buildResult(
+                    prepared,
+                    attached = emptyList(),
+                    detached = emptyList(),
+                    detachedModules = emptyList(),
+                    errors = listOf(
+                        com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.models.CodexWorkspaceSkippedPath(
+                            path = project.basePath.orEmpty(),
+                            source = "workspace-sync-action",
+                            reason = "project_disposed"
                         )
                     )
-                }
+                )
 
                 val registrationMessage = if (McpSettings.getInstance().autoInstallCodexMcpRegistrations) {
                     val repoScopes = RepoScopeRegistry.buildScopes(
@@ -77,7 +76,7 @@ class SyncCodexWorkspaceReposAction : AnAction(
                     project,
                     NotificationType.INFORMATION,
                     "Codex Workspace Sync",
-                    "${syncResult.message} Accepted=${syncResult.accepted.size}, attached=${syncResult.attached.size}, skipped=${syncResult.skipped.size}.$registrationMessage"
+                    "${syncResult.message} Accepted=${syncResult.accepted.size}, attached=${syncResult.attached.size}, detached=${syncResult.detached.size}, detachedModules=${syncResult.detachedModules.size}, runConfigsImported=${syncResult.runConfigurationsImported}, runConfigsRemoved=${syncResult.runConfigurationsRemoved}, skipped=${syncResult.skipped.size}.$registrationMessage"
                 )
                 refreshToolWindow(project)
             } catch (ex: Exception) {
