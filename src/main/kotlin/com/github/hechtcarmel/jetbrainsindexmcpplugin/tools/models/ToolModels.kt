@@ -271,6 +271,8 @@ data class CodexWorkspaceSyncResult(
     val detachedModules: List<CodexWorkspaceModuleEntry> = emptyList(),
     val runConfigurationsImported: Int = 0,
     val runConfigurationsRemoved: Int = 0,
+    val vcsMappingsAdded: Int = 0,
+    val vcsMappingsRemoved: Int = 0,
     val skipped: List<CodexWorkspaceSkippedPath>,
     val errors: List<CodexWorkspaceSkippedPath>,
     val codexMcpRegistration: CodexMcpRegistrationResult? = null,

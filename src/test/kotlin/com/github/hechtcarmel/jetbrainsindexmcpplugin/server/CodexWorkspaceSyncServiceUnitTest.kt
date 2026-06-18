@@ -131,12 +131,14 @@ class CodexWorkspaceSyncServiceUnitTest : TestCase() {
         val owned = createGitRepo("owned-repo")
         val orgOwned = createGitRepo("org-owned-repo")
         val noRemote = createGitRepo("no-remote-repo")
+        val fork = createGitRepo("fork-repo")
 
         val plan = CodexWorkspaceSyncService.buildPlan(
             candidates = listOf(
                 CodexWorkspaceSyncService.Candidate(owned.absolutePath, "active-workspace-roots"),
                 CodexWorkspaceSyncService.Candidate(orgOwned.absolutePath, "active-workspace-roots"),
-                CodexWorkspaceSyncService.Candidate(noRemote.absolutePath, "active-workspace-roots")
+                CodexWorkspaceSyncService.Candidate(noRemote.absolutePath, "active-workspace-roots"),
+                CodexWorkspaceSyncService.Candidate(fork.absolutePath, "active-workspace-roots")
             ),
             existingRepoRoots = emptyList(),
             workspaceProjectPath = null,
@@ -146,14 +148,22 @@ class CodexWorkspaceSyncServiceUnitTest : TestCase() {
                 when (root) {
                     owned.absolutePath.replace('\\', '/') -> listOf("https://github.com/tannerpolley/owned-repo.git")
                     orgOwned.absolutePath.replace('\\', '/') -> listOf("git@github.com:ePC-SAFT/ePC-SAFT.git")
+                    fork.absolutePath.replace('\\', '/') -> listOf("https://github.com/random-owner/fork-repo.git")
                     else -> emptyList()
                 }
             }
         )
 
-        assertEquals(listOf(owned.absolutePath.replace('\\', '/')), plan.accepted.map { it.repoRootPath })
         assertEquals(
-            listOf("github_owner_mismatch:ePC-SAFT", "git_remote_missing"),
+            listOf(
+                owned.absolutePath.replace('\\', '/'),
+                orgOwned.absolutePath.replace('\\', '/'),
+                noRemote.absolutePath.replace('\\', '/')
+            ),
+            plan.accepted.map { it.repoRootPath }
+        )
+        assertEquals(
+            listOf("github_owner_mismatch:random-owner"),
             plan.skipped.map { it.reason }
         )
         assertTrue(plan.toDetach.isEmpty())

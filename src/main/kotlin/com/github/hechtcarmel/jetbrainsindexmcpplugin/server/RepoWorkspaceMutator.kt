@@ -6,10 +6,19 @@ import com.intellij.openapi.module.Module
 import com.intellij.openapi.module.ModuleManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ModuleRootManager
+import com.intellij.openapi.vcs.ProjectLevelVcsManager
+import com.intellij.openapi.vcs.VcsDirectoryMapping
 import com.intellij.openapi.vfs.LocalFileSystem
 import java.io.File
+import java.nio.file.InvalidPathException
 
 object RepoWorkspaceMutator {
+    data class VcsMappingSyncResult(
+        val added: Int = 0,
+        val removed: Int = 0
+    )
+
+    private const val PROJECT_DIR_MACRO = "\$PROJECT_DIR\$"
 
     fun attachContentRoot(project: Project, repoPath: String): RepoScope {
         val normalizedRepoPath = RepoScopeRegistry.normalizeRepoRootPath(repoPath)
@@ -149,6 +158,53 @@ object RepoWorkspaceMutator {
         return scope
     }
 
+    fun syncWorkspaceVcsMappings(project: Project, acceptedRepoRootPaths: List<String>): VcsMappingSyncResult {
+        val workspaceRoot = project.basePath?.let { RepoScopeRegistry.normalizeRepoRootPath(it) } ?: return VcsMappingSyncResult()
+        if (!File(workspaceRoot).name.equals("Workspace", ignoreCase = true)) {
+            return VcsMappingSyncResult()
+        }
+
+        val acceptedRoots = acceptedRepoRootPaths
+            .mapTo(linkedSetOf()) { RepoScopeRegistry.normalizeRepoRootPath(it) }
+        val vcsManager = ProjectLevelVcsManager.getInstance(project)
+        val keptMappings = mutableListOf<VcsDirectoryMapping>()
+        val mappedAcceptedRoots = mutableSetOf<String>()
+        var removed = 0
+
+        for (mapping in vcsManager.getDirectoryMappings()) {
+            val normalizedDirectory = normalizeVcsMappingDirectory(project, mapping.directory)
+            val isGitMapping = mapping.vcs.equals("Git", ignoreCase = true)
+            if (!isGitMapping || normalizedDirectory == null || normalizedDirectory == workspaceRoot) {
+                keptMappings += mapping
+                continue
+            }
+
+            if (normalizedDirectory in acceptedRoots) {
+                if (mappedAcceptedRoots.add(normalizedDirectory)) {
+                    keptMappings += mapping
+                } else {
+                    removed++
+                }
+                continue
+            }
+
+            removed++
+        }
+
+        var added = 0
+        for (repoRoot in acceptedRoots) {
+            if (mappedAcceptedRoots.add(repoRoot)) {
+                keptMappings += VcsDirectoryMapping(toProjectRelativeMappingDirectory(workspaceRoot, repoRoot), "Git")
+                added++
+            }
+        }
+
+        if (added > 0 || removed > 0) {
+            vcsManager.setDirectoryMappings(keptMappings)
+        }
+        return VcsMappingSyncResult(added = added, removed = removed)
+    }
+
     private fun plannedScopeForPath(project: Project, normalizedRepoPath: String): RepoScope {
         val workspaceProjectPath = project.basePath?.let { RepoScopeRegistry.normalizeRepoRootPath(it) }
         val existingRootPaths = RepoScopeRegistry.collectOpenRepoScopes().map { it.repoRootPath }
@@ -255,5 +311,32 @@ object RepoWorkspaceMutator {
 
     fun persistWorkspaceProject(project: Project) {
         StoreUtil.saveSettings(project, true)
+    }
+
+    private fun normalizeVcsMappingDirectory(project: Project, directory: String): String? {
+        val workspaceRoot = project.basePath?.let { RepoScopeRegistry.normalizeRepoRootPath(it) } ?: return null
+        val trimmed = directory.trim()
+        val expanded = when {
+            trimmed.isEmpty() -> workspaceRoot
+            trimmed.startsWith(PROJECT_DIR_MACRO) -> workspaceRoot + trimmed.removePrefix(PROJECT_DIR_MACRO)
+            else -> trimmed
+        }
+        return try {
+            RepoScopeRegistry.normalizeRepoRootPath(File(expanded).canonicalPath)
+        } catch (_: Exception) {
+            RepoScopeRegistry.normalizeRepoRootPath(File(expanded).absolutePath)
+        }
+    }
+
+    private fun toProjectRelativeMappingDirectory(workspaceRoot: String, repoRoot: String): String {
+        return try {
+            val workspacePath = File(workspaceRoot).toPath().toAbsolutePath().normalize()
+            val repoPath = File(repoRoot).toPath().toAbsolutePath().normalize()
+            "$PROJECT_DIR_MACRO/${workspacePath.relativize(repoPath).toString().replace('\\', '/')}"
+        } catch (_: InvalidPathException) {
+            repoRoot
+        } catch (_: IllegalArgumentException) {
+            repoRoot
+        }
     }
 }

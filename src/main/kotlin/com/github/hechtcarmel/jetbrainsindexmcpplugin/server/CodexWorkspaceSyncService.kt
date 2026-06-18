@@ -23,6 +23,7 @@ import kotlinx.serialization.json.jsonPrimitive
 object CodexWorkspaceSyncService {
     private val LOG = logger<CodexWorkspaceSyncService>()
     private val parser = Json { ignoreUnknownKeys = true }
+    private val trustedGitHubOwners = setOf("ePC-SAFT")
     private val sessionIdPattern =
         Regex("""([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$""")
 
@@ -122,6 +123,7 @@ object CodexWorkspaceSyncService {
         val detachedModules = mutableListOf<WorkspaceModuleScope>()
         val errors = mutableListOf<CodexWorkspaceSkippedPath>()
         var runConfigSync = RepoRunConfigurationSynchronizer.SyncResult(imported = 0, removed = 0, errors = emptyList())
+        var vcsMappingSync = RepoWorkspaceMutator.VcsMappingSyncResult()
 
         for (scope in prepared.plan.toDetach) {
             try {
@@ -188,17 +190,35 @@ object CodexWorkspaceSyncService {
             )
         }
 
+        try {
+            vcsMappingSync = RepoWorkspaceMutator.syncWorkspaceVcsMappings(
+                project = project,
+                acceptedRepoRootPaths = prepared.plan.accepted.map { it.repoRootPath }
+            )
+        } catch (e: Exception) {
+            LOG.warn("Failed to sync Workspace VCS mappings for ${project.name}", e)
+            errors.add(
+                CodexWorkspaceSkippedPath(
+                    path = project.basePath.orEmpty(),
+                    source = "workspace-vcs-mappings",
+                    reason = "vcs_mapping_sync_failed: ${e.message ?: e.javaClass.simpleName}"
+                )
+            )
+        }
+
         if (
             attached.isNotEmpty() ||
             detached.isNotEmpty() ||
             detachedModules.isNotEmpty() ||
             runConfigSync.imported > 0 ||
-            runConfigSync.removed > 0
+            runConfigSync.removed > 0 ||
+            vcsMappingSync.added > 0 ||
+            vcsMappingSync.removed > 0
         ) {
             McpServerService.getInstance().notifyEndpointListChanged()
         }
 
-        return buildResult(prepared, attached, detached, detachedModules, errors, runConfigSync)
+        return buildResult(prepared, attached, detached, detachedModules, errors, runConfigSync, vcsMappingSync)
     }
 
     fun persistAppliedChanges(project: Project, result: CodexWorkspaceSyncResult) {
@@ -207,7 +227,9 @@ object CodexWorkspaceSyncService {
             result.detached.isNotEmpty() ||
             result.detachedModules.isNotEmpty() ||
             result.runConfigurationsImported > 0 ||
-            result.runConfigurationsRemoved > 0
+            result.runConfigurationsRemoved > 0 ||
+            result.vcsMappingsAdded > 0 ||
+            result.vcsMappingsRemoved > 0
         ) {
             RepoWorkspaceMutator.persistWorkspaceProject(project)
         }
@@ -223,7 +245,8 @@ object CodexWorkspaceSyncService {
             imported = 0,
             removed = 0,
             errors = emptyList()
-        )
+        ),
+        vcsMappingSync: RepoWorkspaceMutator.VcsMappingSyncResult = RepoWorkspaceMutator.VcsMappingSyncResult()
     ): CodexWorkspaceSyncResult {
         val plan = prepared.plan
         val plannedDetached = if (prepared.options.dryRun) plan.toDetach else detached
@@ -247,9 +270,9 @@ object CodexWorkspaceSyncService {
             prepared.options.dryRun ->
                 "Codex workspace sync dry-run found ${plan.toAttach.size} repo(s) to attach, ${plan.toDetach.size} repo root(s) to detach, and ${plan.toDetachModules.size} module(s) to detach."
             errors.isNotEmpty() ->
-                "Codex workspace sync attached ${attached.size} repo(s), detached ${detached.size} repo root(s), detached ${detachedModules.size} module(s), imported ${runConfigSync.imported} run config(s), removed ${runConfigSync.removed} run config(s), and reported ${errors.size} error(s)."
-            attached.isNotEmpty() || detached.isNotEmpty() || detachedModules.isNotEmpty() || runConfigSync.imported > 0 || runConfigSync.removed > 0 ->
-                "Codex workspace sync attached ${attached.size} repo(s), detached ${detached.size} repo root(s), detached ${detachedModules.size} module(s), imported ${runConfigSync.imported} run config(s), and removed ${runConfigSync.removed} run config(s)."
+                "Codex workspace sync attached ${attached.size} repo(s), detached ${detached.size} repo root(s), detached ${detachedModules.size} module(s), imported ${runConfigSync.imported} run config(s), removed ${runConfigSync.removed} run config(s), added ${vcsMappingSync.added} VCS mapping(s), removed ${vcsMappingSync.removed} VCS mapping(s), and reported ${errors.size} error(s)."
+            attached.isNotEmpty() || detached.isNotEmpty() || detachedModules.isNotEmpty() || runConfigSync.imported > 0 || runConfigSync.removed > 0 || vcsMappingSync.added > 0 || vcsMappingSync.removed > 0 ->
+                "Codex workspace sync attached ${attached.size} repo(s), detached ${detached.size} repo root(s), detached ${detachedModules.size} module(s), imported ${runConfigSync.imported} run config(s), removed ${runConfigSync.removed} run config(s), added ${vcsMappingSync.added} VCS mapping(s), and removed ${vcsMappingSync.removed} VCS mapping(s)."
             else ->
                 "Codex workspace sync found no workspace repo changes."
         }
@@ -267,6 +290,8 @@ object CodexWorkspaceSyncService {
             detachedModules = detachedModuleEntries,
             runConfigurationsImported = runConfigSync.imported,
             runConfigurationsRemoved = runConfigSync.removed,
+            vcsMappingsAdded = vcsMappingSync.added,
+            vcsMappingsRemoved = vcsMappingSync.removed,
             skipped = prepared.discoverySkipped + plan.skipped,
             errors = errors,
             message = message
@@ -294,14 +319,16 @@ object CodexWorkspaceSyncService {
             if (requiredOwner != null) {
                 val remoteUrls = listRemoteUrls(normalized)
                 if (remoteUrls.isEmpty()) {
-                    skipped.add(CodexWorkspaceSkippedPath(normalized, source, "git_remote_missing"))
+                    resolvedByRoot.getOrPut(normalized) { linkedSetOf() }.add(source)
                     return
                 }
 
                 val remoteOwners = remoteUrls
                     .mapNotNull(::githubOwnerFromRemoteUrl)
                     .distinctBy { it.lowercase() }
-                val hasMatchingOwner = remoteOwners.any { it.equals(requiredOwner, ignoreCase = true) }
+                val allowedOwners = (trustedGitHubOwners + requiredOwner)
+                    .mapTo(mutableSetOf()) { it.lowercase() }
+                val hasMatchingOwner = remoteOwners.any { it.lowercase() in allowedOwners }
                 if (!hasMatchingOwner) {
                     val ownerText = if (remoteOwners.isEmpty()) "no_github_owner" else remoteOwners.sorted().joinToString("|")
                     skipped.add(CodexWorkspaceSkippedPath(normalized, source, "github_owner_mismatch:$ownerText"))

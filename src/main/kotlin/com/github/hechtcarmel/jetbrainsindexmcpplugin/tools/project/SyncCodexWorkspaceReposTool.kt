@@ -20,7 +20,7 @@ class SyncCodexWorkspaceReposTool : AbstractMcpTool() {
     override val name = ToolNames.SYNC_CODEX_WORKSPACE_REPOS
 
     override val description = """
-        Discover open Codex workspace roots from Codex desktop state, expand Git worktrees, attach accepted Git repo roots to the current IntelliJ Workspace project, detach stale Workspace repo roots that are no longer accepted, and synchronize accepted repo .run configurations into Services.
+        Discover open Codex workspace roots from Codex desktop state, expand Git worktrees, attach accepted Git repo roots to the current IntelliJ Workspace project, detach stale Workspace repo roots that are no longer accepted, prune stale Workspace VCS mappings, and synchronize accepted repo .run configurations into Services.
 
         Parameters: dryRun (optional, default false), codex_state_path (optional), includeWorktrees (optional, default true), installCodexMcp (optional, default false), githubOwner (optional), project_path (optional workspace project path).
     """.trimIndent()
@@ -31,7 +31,7 @@ class SyncCodexWorkspaceReposTool : AbstractMcpTool() {
         .stringProperty("codex_state_path", "Absolute path to the Codex global state JSON file. Defaults to the current user's Codex state.")
         .booleanProperty("includeWorktrees", "Include Git worktrees for each discovered repo. Default: true.")
         .booleanProperty("installCodexMcp", "Install generated Codex MCP registrations after repo sync. In dryRun mode, only returns commands. Default: false.")
-        .stringProperty("githubOwner", "GitHub username that must own at least one repo remote for a repo to be auto-attached. Defaults to plugin settings.")
+        .stringProperty("githubOwner", "GitHub username allowed for repos with GitHub remotes. Remote-less Git repos and trusted owners are accepted. Defaults to plugin settings.")
         .build()
 
     override suspend fun doExecute(project: Project, arguments: JsonObject): ToolCallResult {
