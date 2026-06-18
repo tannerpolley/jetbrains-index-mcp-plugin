@@ -3,6 +3,8 @@ package com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.constants.ParamNames
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.constants.ToolNames
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.CodexMcpRegistrationInstaller
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.CodexWorkspaceSyncService
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.RepoScopeRegistry
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.models.ToolCallResult
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.AbstractMcpTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.models.RepoScopedClientConfigResult
@@ -16,7 +18,7 @@ class GetRepoScopedClientConfigTool : AbstractMcpTool() {
     override val name = ToolNames.GET_REPO_SCOPED_CLIENT_CONFIG
 
     override val description = """
-        Export Codex MCP install commands for the broad index server and every repo-scoped server currently published by the workspace.
+        Export Codex MCP install commands for the broad index server and the Codex-active GitHub-owner-approved repo-scoped servers in a master Workspace project.
 
         Parameters: client (optional, currently "codex"), project_path (optional workspace project path).
     """.trimIndent()
@@ -32,7 +34,17 @@ class GetRepoScopedClientConfigTool : AbstractMcpTool() {
             return createErrorResult("Unsupported client '$client'. Supported client: codex.")
         }
 
-        val plan = CodexMcpRegistrationInstaller.buildPlan()
+        val plan = if (CodexWorkspaceSyncService.shouldAutoSyncProject(project)) {
+            val prepared = CodexWorkspaceSyncService.prepare(project, CodexWorkspaceSyncService.Options(dryRun = true))
+            CodexMcpRegistrationInstaller.buildPlan(
+                repoScopes = RepoScopeRegistry.buildScopes(
+                    prepared.plan.accepted.map { it.repoRootPath }.distinct(),
+                    prepared.workspaceProjectPath
+                )
+            )
+        } else {
+            CodexMcpRegistrationInstaller.buildPlan()
+        }
 
         return createJsonResult(
             RepoScopedClientConfigResult(

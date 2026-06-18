@@ -2,6 +2,8 @@ package com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project
 
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.constants.ToolNames
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.CodexMcpRegistrationInstaller
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.CodexWorkspaceSyncService
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.RepoScopeRegistry
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.models.ToolCallResult
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.AbstractMcpTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.schema.SchemaBuilder
@@ -16,7 +18,7 @@ class InstallRepoScopedCodexConfigTool : AbstractMcpTool() {
     override val name = ToolNames.INSTALL_REPO_SCOPED_CODEX_CONFIG
 
     override val description = """
-        Install Codex MCP registrations for the broad index server and every repo-scoped server currently published by the workspace.
+        Install Codex MCP registrations for the broad index server and the Codex-active GitHub-owner-approved repo-scoped servers in a master Workspace project.
 
         Parameters: dryRun (optional, default false), project_path (optional workspace project path).
     """.trimIndent()
@@ -29,7 +31,18 @@ class InstallRepoScopedCodexConfigTool : AbstractMcpTool() {
     override suspend fun doExecute(project: Project, arguments: JsonObject): ToolCallResult {
         val dryRun = arguments["dryRun"]?.jsonPrimitive?.booleanOrNull ?: false
         val result = try {
-            CodexMcpRegistrationInstaller.install(dryRun = dryRun)
+            val plan = if (CodexWorkspaceSyncService.shouldAutoSyncProject(project)) {
+                val prepared = CodexWorkspaceSyncService.prepare(project, CodexWorkspaceSyncService.Options(dryRun = true))
+                CodexMcpRegistrationInstaller.buildPlan(
+                    repoScopes = RepoScopeRegistry.buildScopes(
+                        prepared.plan.accepted.map { it.repoRootPath }.distinct(),
+                        prepared.workspaceProjectPath
+                    )
+                )
+            } else {
+                CodexMcpRegistrationInstaller.buildPlan()
+            }
+            CodexMcpRegistrationInstaller.install(dryRun = dryRun, plan = plan)
         } catch (e: Exception) {
             return createErrorResult(e.message ?: "Codex MCP registration install failed.")
         }

@@ -22,7 +22,7 @@ class SyncCodexWorkspaceReposTool : AbstractMcpTool() {
     override val description = """
         Discover open Codex workspace roots from Codex desktop state, expand Git worktrees, and attach missing Git repo roots to the current IntelliJ Workspace project.
 
-        Parameters: dryRun (optional, default false), codex_state_path (optional), includeWorktrees (optional, default true), installCodexMcp (optional, default false), project_path (optional workspace project path).
+        Parameters: dryRun (optional, default false), codex_state_path (optional), includeWorktrees (optional, default true), installCodexMcp (optional, default false), githubOwner (optional), project_path (optional workspace project path).
     """.trimIndent()
 
     override val inputSchema: JsonObject = SchemaBuilder.tool()
@@ -31,13 +31,15 @@ class SyncCodexWorkspaceReposTool : AbstractMcpTool() {
         .stringProperty("codex_state_path", "Absolute path to the Codex global state JSON file. Defaults to the current user's Codex state.")
         .booleanProperty("includeWorktrees", "Include Git worktrees for each discovered repo. Default: true.")
         .booleanProperty("installCodexMcp", "Install generated Codex MCP registrations after repo sync. In dryRun mode, only returns commands. Default: false.")
+        .stringProperty("githubOwner", "GitHub username that must own at least one repo remote for a repo to be auto-attached. Defaults to plugin settings.")
         .build()
 
     override suspend fun doExecute(project: Project, arguments: JsonObject): ToolCallResult {
         val options = CodexWorkspaceSyncService.Options(
             dryRun = arguments["dryRun"]?.jsonPrimitive?.booleanOrNull ?: false,
             codexStatePath = optionalStringArg(arguments, "codex_state_path"),
-            includeWorktrees = arguments["includeWorktrees"]?.jsonPrimitive?.booleanOrNull ?: true
+            includeWorktrees = arguments["includeWorktrees"]?.jsonPrimitive?.booleanOrNull ?: true,
+            githubOwner = optionalStringArg(arguments, "githubOwner")
         )
         val installCodexMcp = arguments["installCodexMcp"]?.jsonPrimitive?.booleanOrNull ?: false
 
@@ -53,7 +55,7 @@ class SyncCodexWorkspaceReposTool : AbstractMcpTool() {
                 }
             }
             if (installCodexMcp) {
-                val plannedScopeRoots = (prepared.existingRepoRoots + prepared.plan.accepted.map { it.repoRootPath }).distinct()
+                val plannedScopeRoots = prepared.plan.accepted.map { it.repoRootPath }.distinct()
                 val registrationPlan = CodexMcpRegistrationInstaller.buildPlan(
                     repoScopes = RepoScopeRegistry.buildScopes(plannedScopeRoots, prepared.workspaceProjectPath)
                 )

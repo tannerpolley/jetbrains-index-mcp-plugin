@@ -15,7 +15,7 @@ Complete parameter reference for all IDE MCP tools. All tools use JSON-RPC via M
 
 **Symbol reference:** Some tools accept `language` + `symbol` as an alternative to `file` + `line` + `column`. The two groups are **mutually exclusive**. Supported languages: Java, PHP. Unsupported languages are rejected explicitly; use `file` + `line` + `column` for other languages.
 
-**Repo-scoped endpoints:** `/index-mcp/repos/<repo-id>/streamable-http` pins calls to one repo root. In a master Workspace project, prefer `ide_sync_codex_workspace_repos` to discover Codex Desktop repo roots and Git worktrees, attach missing Git roots, refresh endpoint publication, and optionally install Codex MCP registrations with `installCodexMcp`. Use `ide_attach_repo_to_workspace` for explicit manual attach, then `ide_install_repo_scoped_codex_config` when the MCP client lacks broad or scoped server registrations. `ide_get_repo_scoped_client_config` is an audit/export fallback. A conflicting `project_path` returns `repo_scope_conflict`. Repo-scoped endpoints currently allow file/status tools and reject high-risk semantic navigation tools that are not proven sub-root safe.
+**Repo-scoped endpoints:** `/index-mcp/repos/<repo-id>/streamable-http` pins calls to one repo root. In a master Workspace project, prefer `ide_sync_codex_workspace_repos` to discover eligible Codex Desktop repo roots and Git worktrees, attach missing Git roots, refresh endpoint publication, and optionally install Codex MCP registrations with `installCodexMcp`. Eligible auto-sync repos must be active or non-archived-thread Codex workspace roots and have a GitHub remote owned by the configured workspace owner. Use `ide_attach_repo_to_workspace` for explicit manual attach, then `ide_install_repo_scoped_codex_config` when the MCP client lacks broad or scoped server registrations. `ide_get_repo_scoped_client_config` is an audit/export fallback. A conflicting `project_path` returns `repo_scope_conflict`. Repo-scoped endpoints currently allow file/status tools and reject high-risk semantic navigation tools that are not proven sub-root safe.
 
 ## Response Format
 
@@ -374,7 +374,7 @@ Attach a local Git repo root as a workspace content root and return its repo-sco
 **Returns**: `{ repoId, repoRootPath, workspaceProjectPath?, repoScopedStreamableHttpUrl, message }`
 
 ### ide_sync_codex_workspace_repos
-Discover Codex Desktop workspace roots from Codex local state, resolve them to Git repo roots, expand Git worktrees, attach missing roots to the current IntelliJ Workspace project, and return a structured sync report.
+Discover eligible Codex Desktop workspace roots from Codex local state, resolve them to Git repo roots, expand Git worktrees, attach missing roots to the current IntelliJ Workspace project, and return a structured sync report.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -382,7 +382,10 @@ Discover Codex Desktop workspace roots from Codex local state, resolve them to G
 | `codex_state_path` | string | no | Absolute path to the Codex global state JSON file |
 | `includeWorktrees` | boolean | no | Include Git worktrees for each discovered repo, default true |
 | `installCodexMcp` | boolean | no | Install broad plus repo-scoped Codex MCP registrations after sync; dry-run returns commands only |
+| `githubOwner` | string | no | GitHub username that must own at least one repo remote; defaults to plugin settings |
 | `project_path` | string | no | Workspace project path |
+
+Eligible auto-sync repos must be active Codex workspace roots or non-archived-thread hints inside Codex saved/active workspace folders, must resolve to Git roots, must have Git remotes, and must have at least one GitHub remote owned by the configured owner.
 
 **Returns**: `{ codexStatePath, dryRun, discovered, accepted, alreadyAttached, attached, skipped, errors, codexMcpRegistration?, message }`
 

@@ -29,7 +29,8 @@ class CodexMcpRegistrationInstallerUnitTest : TestCase() {
     fun testInstallDryRunDoesNotRunCommands() {
         val plan = CodexMcpRegistrationInstaller.Plan(
             servers = emptyList(),
-            commands = listOf("codex mcp add test --url http://127.0.0.1")
+            commands = listOf("codex mcp add test --url http://127.0.0.1"),
+            repoScopedServerNamePrefix = "intellij-index-"
         )
         var ranCommand = false
 
@@ -52,12 +53,14 @@ class CodexMcpRegistrationInstallerUnitTest : TestCase() {
     fun testInstallReportsCommandFailures() {
         val plan = CodexMcpRegistrationInstaller.Plan(
             servers = emptyList(),
-            commands = listOf("success", "failure")
+            commands = listOf("success", "failure"),
+            repoScopedServerNamePrefix = "intellij-index-"
         )
 
         val result = CodexMcpRegistrationInstaller.install(
             dryRun = false,
             plan = plan,
+            configuredServerNamesProvider = { emptyList() },
             commandRunner = { command ->
                 if (command == "success") {
                     CodexMcpRegistrationCommandResult(command, 0, "")
@@ -71,6 +74,59 @@ class CodexMcpRegistrationInstallerUnitTest : TestCase() {
         assertEquals(1, result.succeeded.size)
         assertEquals(1, result.failures.size)
         assertEquals("failure", result.failures.single().command)
+    }
+
+    fun testInstallPrunesStaleRepoScopedRegistrationsBeforeInstall() {
+        val plan = CodexMcpRegistrationInstaller.buildPlan(
+            repoScopes = listOf(RepoScope("jetbrains-bridge", "C:/repo/jetbrains-bridge", "C:/Workspace")),
+            broadStreamableHttpUrl = "http://127.0.0.1:29170/index-mcp/streamable-http",
+            broadServerName = "intellij-index"
+        )
+        val commands = mutableListOf<String>()
+
+        val result = CodexMcpRegistrationInstaller.install(
+            dryRun = false,
+            plan = plan,
+            configuredServerNamesProvider = {
+                listOf(
+                    "intellij-index",
+                    "intellij-index-ePC-SAFT",
+                    "intellij-index-jetbrains-bridge",
+                    "intellij-index-mplgallery",
+                    "other-server"
+                )
+            },
+            commandRunner = { command ->
+                commands += command
+                CodexMcpRegistrationCommandResult(command, 0, "")
+            }
+        )
+
+        assertEquals(
+            listOf(
+                "codex mcp remove intellij-index-ePC-SAFT",
+                "codex mcp remove intellij-index-mplgallery"
+            ),
+            commands.take(2)
+        )
+        assertTrue(commands.none { it == "codex mcp remove intellij-index" })
+        assertTrue(commands.none { it == "codex mcp remove other-server" })
+        assertEquals(commands, result.commands)
+    }
+
+    fun testParseCodexServerNamesFromJsonOutput() {
+        val output = """
+            [
+              {"name":"intellij-index"},
+              {"name":"intellij-index-jetbrains-bridge","enabled":true},
+              {"enabled":true}
+            ]
+        """.trimIndent()
+
+        assertEquals(
+            listOf("intellij-index", "intellij-index-jetbrains-bridge"),
+            CodexMcpRegistrationInstaller.parseCodexServerNames(output)
+        )
     }
 
     fun testGeneratedCommandsUseWindowsShellSyntaxWhenRequested() {

@@ -7,6 +7,8 @@ import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.wm.ToolWindowManager
+import java.awt.Component
+import java.awt.Container
 
 class RefreshAction : AnAction(
     McpBundle.message("toolWindow.refresh"),
@@ -18,14 +20,22 @@ class RefreshAction : AnAction(
 
         val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(McpConstants.TOOL_WINDOW_ID)
         toolWindow?.contentManager?.contents?.forEach { content ->
-            val component = content.component
-            if (component is McpToolWindowPanel) {
-                component.refresh()
-            }
+            findMcpPanel(content.component)?.refresh()
         }
     }
 
     override fun update(e: AnActionEvent) {
         e.presentation.isEnabled = e.project != null
+    }
+
+    private fun findMcpPanel(component: Component): McpToolWindowPanel? {
+        if (component is McpToolWindowPanel) return component
+        if (component is Container) {
+            for (child in component.components) {
+                val match = findMcpPanel(child)
+                if (match != null) return match
+            }
+        }
+        return null
     }
 }

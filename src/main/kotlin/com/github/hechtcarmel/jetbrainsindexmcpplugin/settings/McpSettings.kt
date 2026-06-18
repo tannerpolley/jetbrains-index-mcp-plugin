@@ -34,6 +34,7 @@ class McpSettings : PersistentStateComponent<McpSettings.State> {
         var syncExternalChanges: Boolean = false,
         var autoSyncCodexWorkspaceRepos: Boolean = true,
         var autoInstallCodexMcpRegistrations: Boolean = true,
+        var codexWorkspaceGitHubOwner: String = "tannerpolley",
         var availableProjectsMode: AvailableProjectsMode = AvailableProjectsMode.EXPANDED,
         var responseFormat: ResponseFormat = ResponseFormat.JSON,
         var disabledTools: MutableSet<String> = mutableSetOf(
@@ -69,6 +70,12 @@ class McpSettings : PersistentStateComponent<McpSettings.State> {
     var autoInstallCodexMcpRegistrations: Boolean
         get() = state.autoInstallCodexMcpRegistrations
         set(value) { state.autoInstallCodexMcpRegistrations = value }
+
+    var codexWorkspaceGitHubOwner: String
+        get() = state.codexWorkspaceGitHubOwner.trim().ifEmpty { State().codexWorkspaceGitHubOwner }
+        set(value) {
+            state.codexWorkspaceGitHubOwner = value.trim().ifEmpty { State().codexWorkspaceGitHubOwner }
+        }
 
     var availableProjectsMode: AvailableProjectsMode
         get() = state.availableProjectsMode

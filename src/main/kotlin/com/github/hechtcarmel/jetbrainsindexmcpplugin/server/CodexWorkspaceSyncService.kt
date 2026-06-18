@@ -3,10 +3,12 @@ package com.github.hechtcarmel.jetbrainsindexmcpplugin.server
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.models.CodexWorkspaceRepoEntry
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.models.CodexWorkspaceSkippedPath
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.models.CodexWorkspaceSyncResult
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.settings.McpSettings
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.util.ClientConfigGenerator
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
 import java.io.File
+import java.nio.file.Files
 import java.util.concurrent.TimeUnit
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -19,18 +21,14 @@ import kotlinx.serialization.json.jsonPrimitive
 object CodexWorkspaceSyncService {
     private val LOG = logger<CodexWorkspaceSyncService>()
     private val parser = Json { ignoreUnknownKeys = true }
-
-    private val codexStateRootKeys = setOf(
-        "active-workspace-roots",
-        "electron-saved-workspace-roots",
-        "thread-workspace-root-hints",
-        "project-order"
-    )
+    private val sessionIdPattern =
+        Regex("""([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$""")
 
     data class Options(
         val dryRun: Boolean = false,
         val codexStatePath: String? = null,
-        val includeWorktrees: Boolean = true
+        val includeWorktrees: Boolean = true,
+        val githubOwner: String? = null
     )
 
     data class Candidate(
@@ -63,6 +61,9 @@ object CodexWorkspaceSyncService {
     fun defaultCodexStateFile(): File =
         File(System.getProperty("user.home"), ".codex/.codex-global-state.json")
 
+    fun defaultCodexHome(): File =
+        File(System.getProperty("user.home"), ".codex")
+
     fun shouldAutoSyncProject(project: Project): Boolean {
         val basePath = project.basePath ?: return false
         return File(basePath).name.equals("Workspace", ignoreCase = true)
@@ -78,11 +79,13 @@ object CodexWorkspaceSyncService {
         val discovery = readStateCandidates(stateFile)
         val existingRepoRoots = RepoScopeRegistry.collectOpenRepoScopes().map { it.repoRootPath }
         val workspaceProjectPath = project.basePath?.let { RepoScopeRegistry.normalizeRepoRootPath(it) }
+        val githubOwner = options.githubOwner ?: McpSettings.getInstance().codexWorkspaceGitHubOwner
         val plan = buildPlan(
             candidates = discovery.candidates,
             existingRepoRoots = existingRepoRoots,
             workspaceProjectPath = workspaceProjectPath,
-            includeWorktrees = options.includeWorktrees
+            includeWorktrees = options.includeWorktrees,
+            githubOwner = githubOwner
         )
 
         return PreparedSync(
@@ -174,13 +177,34 @@ object CodexWorkspaceSyncService {
         workspaceProjectPath: String?,
         includeWorktrees: Boolean = true,
         resolveGitRoot: (String) -> String? = ::resolveGitRootPath,
-        listWorktrees: (String) -> List<String> = ::listGitWorktreePaths
+        listWorktrees: (String) -> List<String> = ::listGitWorktreePaths,
+        githubOwner: String? = null,
+        listRemoteUrls: (String) -> List<String> = ::listGitRemoteUrls
     ): Plan {
         val skipped = mutableListOf<CodexWorkspaceSkippedPath>()
         val resolvedByRoot = linkedMapOf<String, MutableSet<String>>()
+        val requiredOwner = githubOwner?.trim()?.takeIf { it.isNotEmpty() }
 
-        fun addResolved(repoRootPath: String, source: String) {
+        fun addResolvedIfAllowed(repoRootPath: String, source: String) {
             val normalized = RepoScopeRegistry.normalizeRepoRootPath(repoRootPath)
+            if (requiredOwner != null) {
+                val remoteUrls = listRemoteUrls(normalized)
+                if (remoteUrls.isEmpty()) {
+                    skipped.add(CodexWorkspaceSkippedPath(normalized, source, "git_remote_missing"))
+                    return
+                }
+
+                val remoteOwners = remoteUrls
+                    .mapNotNull(::githubOwnerFromRemoteUrl)
+                    .distinctBy { it.lowercase() }
+                val hasMatchingOwner = remoteOwners.any { it.equals(requiredOwner, ignoreCase = true) }
+                if (!hasMatchingOwner) {
+                    val ownerText = if (remoteOwners.isEmpty()) "no_github_owner" else remoteOwners.sorted().joinToString("|")
+                    skipped.add(CodexWorkspaceSkippedPath(normalized, source, "github_owner_mismatch:$ownerText"))
+                    return
+                }
+            }
+
             resolvedByRoot.getOrPut(normalized) { linkedSetOf() }.add(source)
         }
 
@@ -197,7 +221,7 @@ object CodexWorkspaceSyncService {
                 continue
             }
 
-            addResolved(repoRootPath, candidate.source)
+            addResolvedIfAllowed(repoRootPath, candidate.source)
 
             if (includeWorktrees) {
                 for (worktreePath in listWorktrees(repoRootPath)) {
@@ -211,7 +235,7 @@ object CodexWorkspaceSyncService {
                         skipped.add(CodexWorkspaceSkippedPath(worktreePath, "git-worktree:$repoRootPath", "no_git_marker"))
                         continue
                     }
-                    addResolved(worktreeRootPath, "git-worktree:$repoRootPath")
+                    addResolvedIfAllowed(worktreeRootPath, "git-worktree:$repoRootPath")
                 }
             }
         }
@@ -235,8 +259,12 @@ object CodexWorkspaceSyncService {
         )
     }
 
-    fun extractCandidatesFromStateText(text: String): List<Candidate> {
+    fun extractCandidatesFromStateText(
+        text: String,
+        nonArchivedThreadIds: Set<String> = emptySet()
+    ): List<Candidate> {
         val root = parser.parseToJsonElement(text)
+        if (root !is JsonObject) return emptyList()
         val candidatesByPath = linkedMapOf<String, MutableSet<String>>()
 
         fun addCandidate(path: String, source: String) {
@@ -245,24 +273,26 @@ object CodexWorkspaceSyncService {
             candidatesByPath.getOrPut(trimmed) { linkedSetOf() }.add(source)
         }
 
-        fun visit(element: JsonElement, activeSource: String?) {
-            when (element) {
-                is JsonObject -> {
-                    for ((key, value) in element) {
-                        val source = if (key in codexStateRootKeys) key else activeSource
-                        visit(value, source)
-                    }
-                }
-                is JsonArray -> element.forEach { visit(it, activeSource) }
-                is JsonPrimitive -> {
-                    val source = activeSource ?: return
-                    val value = element.jsonPrimitive.contentOrNull ?: return
-                    addCandidate(value, source)
+        val activeWorkspaceRoots = extractLocalPaths(root["active-workspace-roots"])
+        val savedWorkspaceRoots = extractLocalPaths(root["electron-saved-workspace-roots"])
+        val openWorkspaceRootKeys = (activeWorkspaceRoots + savedWorkspaceRoots)
+            .map(::localPathKey)
+            .toSet()
+
+        for (path in activeWorkspaceRoots) {
+            addCandidate(path, "active-workspace-roots")
+        }
+
+        val threadHints = root["thread-workspace-root-hints"] as? JsonObject ?: JsonObject(emptyMap())
+        for ((threadId, value) in threadHints) {
+            if (threadId !in nonArchivedThreadIds) continue
+            for (path in extractLocalPaths(value)) {
+                if (localPathKey(path) in openWorkspaceRootKeys) {
+                    addCandidate(path, "active-thread:$threadId")
                 }
             }
         }
 
-        visit(root, null)
         return candidatesByPath.map { (path, sources) ->
             Candidate(path, sources.sorted().joinToString(","))
         }
@@ -306,6 +336,62 @@ object CodexWorkspaceSyncService {
         }
     }
 
+    fun listGitRemoteUrls(repoRootPath: String): List<String> {
+        return try {
+            val process = ProcessBuilder("git", "-C", repoRootPath, "remote", "-v")
+                .redirectErrorStream(true)
+                .start()
+            if (!process.waitFor(5, TimeUnit.SECONDS)) {
+                process.destroyForcibly()
+                return emptyList()
+            }
+            if (process.exitValue() != 0) {
+                return emptyList()
+            }
+            process.inputStream.bufferedReader().use { reader ->
+                reader.readText()
+                    .lineSequence()
+                    .mapNotNull { line -> line.trim().split(Regex("\\s+")).getOrNull(1) }
+                    .filter { it.isNotBlank() }
+                    .distinct()
+                    .toList()
+            }
+        } catch (e: Exception) {
+            LOG.debug("Failed to list Git remotes for $repoRootPath", e)
+            emptyList()
+        }
+    }
+
+    fun githubOwnerFromRemoteUrl(remoteUrl: String): String? {
+        val trimmed = remoteUrl.trim().removeSuffix("/")
+        val match = Regex("""(?i)github\.com[:/]+([^/\s:]+)/[^/\s]+(?:\.git)?$""").find(trimmed)
+            ?: return null
+        return match.groupValues[1].takeIf { it.isNotBlank() }
+    }
+
+    fun readNonArchivedThreadIds(codexHome: File = defaultCodexHome()): Set<String> {
+        val sessionsDir = File(codexHome, "sessions")
+        if (!sessionsDir.exists()) return emptySet()
+
+        return try {
+            Files.walk(sessionsDir.toPath()).use { paths ->
+                paths
+                    .filter { Files.isRegularFile(it) && it.fileName.toString().endsWith(".jsonl", ignoreCase = true) }
+                    .map { path ->
+                        sessionIdPattern.find(path.fileName.toString().removeSuffix(".jsonl"))?.groupValues?.get(1)
+                    }
+                    .filter { it != null }
+                    .map { it!! }
+                    .map { it.lowercase() }
+                    .toList()
+                    .toSet()
+            }
+        } catch (e: Exception) {
+            LOG.debug("Failed to read non-archived Codex thread ids from ${sessionsDir.absolutePath}", e)
+            emptySet()
+        }
+    }
+
     private data class Discovery(
         val candidates: List<Candidate>,
         val skipped: List<CodexWorkspaceSkippedPath>
@@ -320,7 +406,13 @@ object CodexWorkspaceSyncService {
         }
 
         return try {
-            Discovery(extractCandidatesFromStateText(stateFile.readText()), emptyList())
+            Discovery(
+                extractCandidatesFromStateText(
+                    text = stateFile.readText(),
+                    nonArchivedThreadIds = readNonArchivedThreadIds(stateFile.parentFile ?: defaultCodexHome())
+                ),
+                emptyList()
+            )
         } catch (e: Exception) {
             Discovery(
                 candidates = emptyList(),
@@ -342,6 +434,30 @@ object CodexWorkspaceSyncService {
             value.startsWith("/") ||
             value.startsWith("\\\\")
     }
+
+    private fun extractLocalPaths(element: JsonElement?): List<String> {
+        if (element == null) return emptyList()
+        val paths = mutableListOf<String>()
+
+        fun visit(value: JsonElement) {
+            when (value) {
+                is JsonArray -> value.forEach(::visit)
+                is JsonObject -> value.values.forEach(::visit)
+                is JsonPrimitive -> {
+                    val text = value.jsonPrimitive.contentOrNull ?: return
+                    if (looksLikeLocalPath(text)) {
+                        paths += text
+                    }
+                }
+            }
+        }
+
+        visit(element)
+        return paths
+    }
+
+    private fun localPathKey(path: String): String =
+        path.trim().replace('\\', '/').trimEnd('/').lowercase()
 
     private fun buildEntries(
         repos: List<ResolvedRepo>,

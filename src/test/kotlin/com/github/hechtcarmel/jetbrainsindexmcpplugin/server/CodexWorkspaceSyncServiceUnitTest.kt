@@ -15,36 +15,55 @@ class CodexWorkspaceSyncServiceUnitTest : TestCase() {
         }
     }
 
-    fun testExtractCandidatesFromKnownCodexStateSections() {
+    fun testExtractCandidatesFromActiveOpenCodexStateSections() {
         val stateText = """
             {
               "active-workspace-roots": [
-                "C:\\Users\\Tanner\\Documents\\Workspaces\\Engineering\\ePC-SAFT"
+                "C:\\Users\\Tanner\\Documents\\Workspaces\\Projects\\jetbrains-bridge"
+              ],
+              "electron-saved-workspace-roots": [
+                "C:\\Users\\Tanner\\Documents\\Workspaces\\Apps\\mplgallery"
               ],
               "thread-workspace-root-hints": {
-                "019e": {
-                  "cwd": "C:\\Users\\Tanner\\Documents\\Workspaces\\Projects\\jetbrains-bridge"
-                }
+                "019e93f2-8668-7800-ba40-752ad5aba592": "C:\\Users\\Tanner\\Documents\\Workspaces\\Apps\\mplgallery",
+                "019e93fc-0d5e-7f41-89dc-a14c044903a1": "C:\\Users\\Tanner\\Documents\\Workspaces\\Projects\\closed-repo",
+                "019e9451-7730-7dd0-86e4-5c6063b18e7b": "C:\\Users\\Tanner\\Documents\\Workspaces\\Projects\\archived-repo"
               },
+              "project-order": [
+                "C:\\Users\\Tanner\\Documents\\Workspaces\\Projects\\project-order-only"
+              ],
               "unrelated": {
                 "path": "C:\\Users\\Tanner\\Documents\\Workspaces\\Projects\\ignored"
+              },
+              "electron-persisted-atom-state": {
+                "prompt-history": {
+                  "019e93f2-8668-7800-ba40-752ad5aba592": [
+                    "C:\\Users\\Tanner\\Documents\\Workspaces\\Projects\\ignored-prompt-text"
+                  ]
+                }
               }
             }
         """.trimIndent()
 
-        val candidates = CodexWorkspaceSyncService.extractCandidatesFromStateText(stateText)
+        val candidates = CodexWorkspaceSyncService.extractCandidatesFromStateText(
+            stateText,
+            nonArchivedThreadIds = setOf(
+                "019e93f2-8668-7800-ba40-752ad5aba592",
+                "019e93fc-0d5e-7f41-89dc-a14c044903a1"
+            )
+        )
 
         assertEquals(2, candidates.size)
         assertEquals(
-            "C:\\Users\\Tanner\\Documents\\Workspaces\\Engineering\\ePC-SAFT",
+            "C:\\Users\\Tanner\\Documents\\Workspaces\\Projects\\jetbrains-bridge",
             candidates[0].path
         )
         assertEquals("active-workspace-roots", candidates[0].source)
         assertEquals(
-            "C:\\Users\\Tanner\\Documents\\Workspaces\\Projects\\jetbrains-bridge",
+            "C:\\Users\\Tanner\\Documents\\Workspaces\\Apps\\mplgallery",
             candidates[1].path
         )
-        assertEquals("thread-workspace-root-hints", candidates[1].source)
+        assertEquals("active-thread:019e93f2-8668-7800-ba40-752ad5aba592", candidates[1].source)
     }
 
     fun testBuildPlanResolvesNestedPathsAndGitWorktrees() {
@@ -105,6 +124,53 @@ class CodexWorkspaceSyncServiceUnitTest : TestCase() {
             listOf("no_git_marker", "candidate_path_missing"),
             plan.skipped.map { it.reason }
         )
+    }
+
+    fun testBuildPlanRequiresMatchingGitHubOwnerRemoteWhenConfigured() {
+        val owned = createGitRepo("owned-repo")
+        val orgOwned = createGitRepo("org-owned-repo")
+        val noRemote = createGitRepo("no-remote-repo")
+
+        val plan = CodexWorkspaceSyncService.buildPlan(
+            candidates = listOf(
+                CodexWorkspaceSyncService.Candidate(owned.absolutePath, "active-workspace-roots"),
+                CodexWorkspaceSyncService.Candidate(orgOwned.absolutePath, "active-workspace-roots"),
+                CodexWorkspaceSyncService.Candidate(noRemote.absolutePath, "active-workspace-roots")
+            ),
+            existingRepoRoots = emptyList(),
+            workspaceProjectPath = null,
+            includeWorktrees = false,
+            githubOwner = "tannerpolley",
+            listRemoteUrls = { root ->
+                when (root) {
+                    owned.absolutePath.replace('\\', '/') -> listOf("https://github.com/tannerpolley/owned-repo.git")
+                    orgOwned.absolutePath.replace('\\', '/') -> listOf("git@github.com:ePC-SAFT/ePC-SAFT.git")
+                    else -> emptyList()
+                }
+            }
+        )
+
+        assertEquals(listOf(owned.absolutePath.replace('\\', '/')), plan.accepted.map { it.repoRootPath })
+        assertEquals(
+            listOf("github_owner_mismatch:ePC-SAFT", "git_remote_missing"),
+            plan.skipped.map { it.reason }
+        )
+    }
+
+    fun testGithubOwnerFromRemoteUrlSupportsCommonGitHubRemoteFormats() {
+        assertEquals(
+            "tannerpolley",
+            CodexWorkspaceSyncService.githubOwnerFromRemoteUrl("https://github.com/tannerpolley/jetbrains-bridge.git")
+        )
+        assertEquals(
+            "tannerpolley",
+            CodexWorkspaceSyncService.githubOwnerFromRemoteUrl("git@github.com:tannerpolley/jetbrains-bridge.git")
+        )
+        assertEquals(
+            "tannerpolley",
+            CodexWorkspaceSyncService.githubOwnerFromRemoteUrl("ssh://git@github.com/tannerpolley/jetbrains-bridge.git")
+        )
+        assertNull(CodexWorkspaceSyncService.githubOwnerFromRemoteUrl("https://example.com/tannerpolley/repo.git"))
     }
 
     fun testBuildPlanDoesNotAttachWorkspaceProjectRootAsRepo() {
