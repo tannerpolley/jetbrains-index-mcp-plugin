@@ -63,10 +63,44 @@ class CodexWorkspaceSyncServiceUnitTest : TestCase() {
             "C:\\Users\\Tanner\\Documents\\Workspaces\\Apps\\mplgallery",
             candidates[1].path
         )
-        assertEquals("active-thread:019e93f2-8668-7800-ba40-752ad5aba592", candidates[1].source)
+        assertEquals(
+            "active-thread:019e93f2-8668-7800-ba40-752ad5aba592,electron-saved-workspace-roots",
+            candidates[1].source
+        )
     }
 
     fun testBuildPlanResolvesNestedPathsAndGitWorktrees() {
+        val repo = createGitRepo("repo")
+        val nested = File(repo, "packages/pkg").also { it.mkdirs() }
+        val worktree = createGitRepo("repo-issue-0001")
+        val worktreeNested = File(worktree, "src").also { it.mkdirs() }
+
+        val plan = CodexWorkspaceSyncService.buildPlan(
+            candidates = listOf(
+                CodexWorkspaceSyncService.Candidate(nested.absolutePath, "thread-workspace-root-hints"),
+                CodexWorkspaceSyncService.Candidate(worktreeNested.absolutePath, "thread-workspace-root-hints")
+            ),
+            existingRepoRoots = emptyList(),
+            workspaceProjectPath = null,
+            includeWorktrees = true,
+            listWorktrees = { root ->
+                when (root) {
+                    repo.absolutePath.replace('\\', '/') -> listOf(repo.absolutePath, worktree.absolutePath)
+                    worktree.absolutePath.replace('\\', '/') -> listOf(worktree.absolutePath)
+                    else -> emptyList()
+                }
+            }
+        )
+
+        val rootsToAttach = plan.toAttach.map { it.repoRootPath }
+        assertEquals(2, plan.discovered)
+        assertTrue(rootsToAttach.contains(repo.absolutePath.replace('\\', '/')))
+        assertTrue(rootsToAttach.contains(worktree.absolutePath.replace('\\', '/')))
+        assertTrue(plan.alreadyAttached.isEmpty())
+        assertTrue(plan.skipped.isEmpty())
+    }
+
+    fun testBuildPlanDoesNotExpandUnrequestedGitWorktrees() {
         val repo = createGitRepo("repo")
         val nested = File(repo, "packages/pkg").also { it.mkdirs() }
         val worktree = createGitRepo("repo-issue-0001")
@@ -78,16 +112,11 @@ class CodexWorkspaceSyncServiceUnitTest : TestCase() {
             includeWorktrees = true,
             listWorktrees = { root ->
                 assertEquals(repo.absolutePath.replace('\\', '/'), root)
-                listOf(worktree.absolutePath)
+                listOf(repo.absolutePath, worktree.absolutePath)
             }
         )
 
-        val rootsToAttach = plan.toAttach.map { it.repoRootPath }
-        assertEquals(1, plan.discovered)
-        assertTrue(rootsToAttach.contains(repo.absolutePath.replace('\\', '/')))
-        assertTrue(rootsToAttach.contains(worktree.absolutePath.replace('\\', '/')))
-        assertTrue(plan.alreadyAttached.isEmpty())
-        assertTrue(plan.skipped.isEmpty())
+        assertEquals(listOf(repo.absolutePath.replace('\\', '/')), plan.toAttach.map { it.repoRootPath })
     }
 
     fun testBuildPlanSeparatesAlreadyAttachedRoots() {
@@ -169,6 +198,44 @@ class CodexWorkspaceSyncServiceUnitTest : TestCase() {
         assertTrue(plan.toDetach.isEmpty())
     }
 
+    fun testBuildPlanRequiresCanonicalGitHubRepoNameForSavedRoots() {
+        val matching = createGitRepo("matching-repo")
+        val renamed = createGitRepo("renamed-local")
+        val activeRenamed = createGitRepo("active-renamed-local")
+
+        val plan = CodexWorkspaceSyncService.buildPlan(
+            candidates = listOf(
+                CodexWorkspaceSyncService.Candidate(matching.absolutePath, "electron-saved-workspace-roots"),
+                CodexWorkspaceSyncService.Candidate(renamed.absolutePath, "electron-saved-workspace-roots"),
+                CodexWorkspaceSyncService.Candidate(activeRenamed.absolutePath, "active-workspace-roots")
+            ),
+            existingRepoRoots = emptyList(),
+            workspaceProjectPath = null,
+            includeWorktrees = false,
+            githubOwner = "tannerpolley",
+            listRemoteUrls = { root ->
+                when (root) {
+                    matching.absolutePath.replace('\\', '/') -> listOf("https://github.com/tannerpolley/matching-repo.git")
+                    renamed.absolutePath.replace('\\', '/') -> listOf("https://github.com/tannerpolley/google_drive_work.git")
+                    activeRenamed.absolutePath.replace('\\', '/') -> listOf("https://github.com/tannerpolley/google_drive_work.git")
+                    else -> emptyList()
+                }
+            }
+        )
+
+        assertEquals(
+            listOf(
+                matching.absolutePath.replace('\\', '/'),
+                activeRenamed.absolutePath.replace('\\', '/')
+            ),
+            plan.accepted.map { it.repoRootPath }
+        )
+        assertEquals(
+            listOf("github_repo_mismatch:google_drive_work"),
+            plan.skipped.map { it.reason }
+        )
+    }
+
     fun testGithubOwnerFromRemoteUrlSupportsCommonGitHubRemoteFormats() {
         assertEquals(
             "tannerpolley",
@@ -183,6 +250,15 @@ class CodexWorkspaceSyncServiceUnitTest : TestCase() {
             CodexWorkspaceSyncService.githubOwnerFromRemoteUrl("ssh://git@github.com/tannerpolley/jetbrains-bridge.git")
         )
         assertNull(CodexWorkspaceSyncService.githubOwnerFromRemoteUrl("https://example.com/tannerpolley/repo.git"))
+        assertEquals(
+            "jetbrains-bridge",
+            CodexWorkspaceSyncService.githubRepoNameFromRemoteUrl("https://github.com/tannerpolley/jetbrains-bridge.git")
+        )
+        assertEquals(
+            "jetbrains-bridge",
+            CodexWorkspaceSyncService.githubRepoNameFromRemoteUrl("git@github.com:tannerpolley/jetbrains-bridge.git")
+        )
+        assertNull(CodexWorkspaceSyncService.githubRepoNameFromRemoteUrl("https://example.com/tannerpolley/repo.git"))
     }
 
     fun testBuildPlanDoesNotAttachWorkspaceProjectRootAsRepo() {

@@ -313,6 +313,16 @@ object CodexWorkspaceSyncService {
         val skipped = mutableListOf<CodexWorkspaceSkippedPath>()
         val resolvedByRoot = linkedMapOf<String, MutableSet<String>>()
         val requiredOwner = githubOwner?.trim()?.takeIf { it.isNotEmpty() }
+        val candidatePaths = candidates.map { candidate ->
+            RepoScopeRegistry.normalizeRepoRootPath(File(candidate.path).absolutePath)
+        }
+
+        fun isRequestedCandidateRoot(rootPath: String): Boolean {
+            val normalizedRoot = RepoScopeRegistry.normalizeRepoRootPath(rootPath)
+            return candidatePaths.any { candidatePath ->
+                candidatePath == normalizedRoot || candidatePath.startsWith("$normalizedRoot/")
+            }
+        }
 
         fun addResolvedIfAllowed(repoRootPath: String, source: String) {
             val normalized = RepoScopeRegistry.normalizeRepoRootPath(repoRootPath)
@@ -333,6 +343,24 @@ object CodexWorkspaceSyncService {
                     val ownerText = if (remoteOwners.isEmpty()) "no_github_owner" else remoteOwners.sorted().joinToString("|")
                     skipped.add(CodexWorkspaceSkippedPath(normalized, source, "github_owner_mismatch:$ownerText"))
                     return
+                }
+
+                if (source.split(",").all { it == "electron-saved-workspace-roots" }) {
+                    val localRepoName = File(normalized).name
+                    val remoteRepoNames = remoteUrls
+                        .mapNotNull(::githubRepoNameFromRemoteUrl)
+                        .distinctBy { it.lowercase() }
+                    val hasMatchingRepoName = remoteRepoNames.any { it.equals(localRepoName, ignoreCase = true) }
+                    if (remoteRepoNames.isNotEmpty() && !hasMatchingRepoName) {
+                        skipped.add(
+                            CodexWorkspaceSkippedPath(
+                                normalized,
+                                source,
+                                "github_repo_mismatch:${remoteRepoNames.sorted().joinToString("|")}"
+                            )
+                        )
+                        return
+                    }
                 }
             }
 
@@ -364,6 +392,10 @@ object CodexWorkspaceSyncService {
                     val worktreeRootPath = resolveGitRoot(worktreeFile.absolutePath)
                     if (worktreeRootPath == null) {
                         skipped.add(CodexWorkspaceSkippedPath(worktreePath, "git-worktree:$repoRootPath", "no_git_marker"))
+                        continue
+                    }
+                    val normalizedRepoRootPath = RepoScopeRegistry.normalizeRepoRootPath(repoRootPath)
+                    if (worktreeRootPath == normalizedRepoRootPath || !isRequestedCandidateRoot(worktreeRootPath)) {
                         continue
                     }
                     addResolvedIfAllowed(worktreeRootPath, "git-worktree:$repoRootPath")
@@ -472,6 +504,9 @@ object CodexWorkspaceSyncService {
         for (path in activeWorkspaceRoots) {
             addCandidate(path, "active-workspace-roots")
         }
+        for (path in savedWorkspaceRoots) {
+            addCandidate(path, "electron-saved-workspace-roots")
+        }
 
         val threadHints = root["thread-workspace-root-hints"] as? JsonObject ?: JsonObject(emptyMap())
         for ((threadId, value) in threadHints) {
@@ -553,10 +588,20 @@ object CodexWorkspaceSyncService {
     }
 
     fun githubOwnerFromRemoteUrl(remoteUrl: String): String? {
+        return githubRemoteFromUrl(remoteUrl)?.first
+    }
+
+    fun githubRepoNameFromRemoteUrl(remoteUrl: String): String? {
+        return githubRemoteFromUrl(remoteUrl)?.second
+    }
+
+    private fun githubRemoteFromUrl(remoteUrl: String): Pair<String, String>? {
         val trimmed = remoteUrl.trim().removeSuffix("/")
-        val match = Regex("""(?i)github\.com[:/]+([^/\s:]+)/[^/\s]+(?:\.git)?$""").find(trimmed)
+        val match = Regex("""(?i)github\.com[:/]+([^/\s:]+)/([^/\s]+?)(?:\.git)?$""").find(trimmed)
             ?: return null
-        return match.groupValues[1].takeIf { it.isNotBlank() }
+        val owner = match.groupValues[1].takeIf { it.isNotBlank() } ?: return null
+        val repo = match.groupValues[2].takeIf { it.isNotBlank() } ?: return null
+        return owner to repo
     }
 
     fun readNonArchivedThreadIds(codexHome: File = defaultCodexHome()): Set<String> {
