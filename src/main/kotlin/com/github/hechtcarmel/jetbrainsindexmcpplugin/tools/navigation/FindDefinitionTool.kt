@@ -54,6 +54,7 @@ class FindDefinitionTool : AbstractMcpTool() {
         val fullElementPreview = arguments[ParamNames.FULL_ELEMENT_PREVIEW]?.jsonPrimitive?.content?.toBoolean() ?: false
         val maxPreviewLines = (arguments[ParamNames.MAX_PREVIEW_LINES]?.jsonPrimitive?.int ?: DEFAULT_MAX_PREVIEW_LINES)
             .coerceIn(1, MAX_ALLOWED_PREVIEW_LINES)
+        rejectUnsupportedRepoScope(project, arguments, name)?.let { return it }
 
         requireSmartMode(project)
 

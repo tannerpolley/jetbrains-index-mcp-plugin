@@ -115,6 +115,7 @@ class ClientConfigGeneratorUnitTest : TestCase() {
 
         assertTrue("Should mention terminal", hint.contains("terminal") || hint.contains("command"))
         assertTrue("Should mention codex", hint.contains("codex"))
+        assertTrue("Should mention broad workspace install flow", hint.contains("broad") || hint.contains("workspace"))
         assertTrue("Should mention repo-scoped install flow", hint.contains("repo-scoped"))
         assertTrue("Should mention remove command", hint.contains("mcp remove"))
         assertTrue("Should mention automatic reinstall", hint.contains("reinstall") || hint.contains("Automatically"))
@@ -580,6 +581,23 @@ class ClientConfigGeneratorUnitTest : TestCase() {
         )
     }
 
+    fun testBuildRepoScopedCodexTargetsSortByRepoId() {
+        val scopes = listOf(
+            RepoScopeContext(repoId = "beta", gitRootPath = "/workspace/beta"),
+            RepoScopeContext(repoId = "alpha", gitRootPath = "/workspace/alpha")
+        )
+
+        val targets = ClientConfigGenerator.buildRepoScopedCodexTargets(
+            repoScopes = scopes,
+            host = "127.0.0.1",
+            port = 29170,
+            baseServerName = "intellij-index"
+        )
+
+        assertEquals(listOf("alpha", "beta"), targets.map { it.repoId })
+        assertEquals(listOf("intellij-index-alpha", "intellij-index-beta"), targets.map { it.serverName })
+    }
+
     fun testBuildRepoScopedCodexCommandIncludesRemoveAndAddPerRepo() {
         val targets = listOf(
             ClientConfigGenerator.RepoScopedCodexTarget(
@@ -611,6 +629,36 @@ class ClientConfigGeneratorUnitTest : TestCase() {
         assertFalse(command.contains("http://127.0.0.1:29170/index-mcp/streamable-http"))
     }
 
+    fun testBuildBroadAndRepoScopedCodexCommandIncludesBroadAndRepoEntries() {
+        val targets = listOf(
+            ClientConfigGenerator.RepoScopedCodexTarget(
+                repoId = "alpha",
+                serverName = "intellij-index-alpha",
+                serverUrl = "http://127.0.0.1:29170/index-mcp/repos/alpha/streamable-http"
+            ),
+            ClientConfigGenerator.RepoScopedCodexTarget(
+                repoId = "beta",
+                serverName = "intellij-index-beta",
+                serverUrl = "http://127.0.0.1:29170/index-mcp/repos/beta/streamable-http"
+            )
+        )
+
+        val command = ClientConfigGenerator.buildBroadAndRepoScopedCodexCommand(
+            broadServerName = "intellij-index",
+            broadServerUrl = "http://127.0.0.1:29170/index-mcp/streamable-http",
+            targets = targets
+        )
+
+        assertTrue(command.contains("codex mcp remove intellij-index >/dev/null 2>&1"))
+        assertTrue(
+            command.contains(
+                "codex mcp add intellij-index --url http://127.0.0.1:29170/index-mcp/streamable-http"
+            )
+        )
+        assertTrue(command.contains("codex mcp remove intellij-index-alpha >/dev/null 2>&1"))
+        assertTrue(command.contains("codex mcp remove intellij-index-beta >/dev/null 2>&1"))
+    }
+
     fun testBuildRepoScopedCodexCommandFormatForMultipleRepos() {
         val targets = listOf(
             ClientConfigGenerator.RepoScopedCodexTarget(
@@ -628,6 +676,36 @@ class ClientConfigGeneratorUnitTest : TestCase() {
         val command = ClientConfigGenerator.buildRepoScopedCodexCommand(targets)
 
         val expected = "codex mcp remove intellij-index-alpha >/dev/null 2>&1 ; " +
+            "codex mcp add intellij-index-alpha --url http://127.0.0.1:29170/index-mcp/repos/alpha/streamable-http ; " +
+            "codex mcp remove intellij-index-beta >/dev/null 2>&1 ; " +
+            "codex mcp add intellij-index-beta --url http://127.0.0.1:29170/index-mcp/repos/beta/streamable-http"
+
+        assertEquals(expected, command)
+    }
+
+    fun testBuildBroadAndRepoScopedCodexCommandFormatForMultipleRepos() {
+        val targets = listOf(
+            ClientConfigGenerator.RepoScopedCodexTarget(
+                repoId = "alpha",
+                serverName = "intellij-index-alpha",
+                serverUrl = "http://127.0.0.1:29170/index-mcp/repos/alpha/streamable-http"
+            ),
+            ClientConfigGenerator.RepoScopedCodexTarget(
+                repoId = "beta",
+                serverName = "intellij-index-beta",
+                serverUrl = "http://127.0.0.1:29170/index-mcp/repos/beta/streamable-http"
+            )
+        )
+
+        val command = ClientConfigGenerator.buildBroadAndRepoScopedCodexCommand(
+            broadServerName = "intellij-index",
+            broadServerUrl = "http://127.0.0.1:29170/index-mcp/streamable-http",
+            targets = targets
+        )
+
+        val expected = "codex mcp remove intellij-index >/dev/null 2>&1 ; " +
+            "codex mcp add intellij-index --url http://127.0.0.1:29170/index-mcp/streamable-http ; " +
+            "codex mcp remove intellij-index-alpha >/dev/null 2>&1 ; " +
             "codex mcp add intellij-index-alpha --url http://127.0.0.1:29170/index-mcp/repos/alpha/streamable-http ; " +
             "codex mcp remove intellij-index-beta >/dev/null 2>&1 ; " +
             "codex mcp add intellij-index-beta --url http://127.0.0.1:29170/index-mcp/repos/beta/streamable-http"
@@ -666,10 +744,58 @@ class ClientConfigGeneratorUnitTest : TestCase() {
         )
     }
 
+    fun testBuildTerminalCommandForWindowsWrapsBroadAndRepoScopedCodexCommand() {
+        val command = ClientConfigGenerator.buildBroadAndRepoScopedCodexCommand(
+            broadServerName = "intellij-index",
+            broadServerUrl = "http://127.0.0.1:29170/index-mcp/streamable-http",
+            targets = listOf(
+                ClientConfigGenerator.RepoScopedCodexTarget(
+                    repoId = "alpha",
+                    serverName = "intellij-index-alpha",
+                    serverUrl = "http://127.0.0.1:29170/index-mcp/repos/alpha/streamable-http"
+                ),
+                ClientConfigGenerator.RepoScopedCodexTarget(
+                    repoId = "beta",
+                    serverName = "intellij-index-beta",
+                    serverUrl = "http://127.0.0.1:29170/index-mcp/repos/beta/streamable-http"
+                )
+            ),
+            platform = ClientConfigGenerator.CommandPlatform.WINDOWS
+        )
+
+        val terminalCommand = ClientConfigGenerator.buildTerminalCommand(
+            command = command,
+            platform = ClientConfigGenerator.CommandPlatform.WINDOWS
+        )
+
+        assertEquals(
+            "cmd.exe /d /c \"codex mcp remove intellij-index >NUL 2>&1 & " +
+                "codex mcp add intellij-index --url http://127.0.0.1:29170/index-mcp/streamable-http & " +
+                "codex mcp remove intellij-index-alpha >NUL 2>&1 & " +
+                "codex mcp add intellij-index-alpha --url http://127.0.0.1:29170/index-mcp/repos/alpha/streamable-http & " +
+                "codex mcp remove intellij-index-beta >NUL 2>&1 & " +
+                "codex mcp add intellij-index-beta --url http://127.0.0.1:29170/index-mcp/repos/beta/streamable-http\"",
+            terminalCommand
+        )
+    }
+
     fun testBuildRepoScopedCodexCommandFailsLoudlyWhenNoTargetsExist() {
         try {
             ClientConfigGenerator.buildRepoScopedCodexCommand(emptyList())
             fail("Expected repo-scoped Codex command generation to fail when no targets exist")
+        } catch (e: IllegalStateException) {
+            assertTrue(e.message?.contains("No repo-scoped MCP endpoints are available") == true)
+        }
+    }
+
+    fun testBuildBroadAndRepoScopedCodexCommandFailsLoudlyWhenNoTargetsExist() {
+        try {
+            ClientConfigGenerator.buildBroadAndRepoScopedCodexCommand(
+                broadServerName = "intellij-index",
+                broadServerUrl = "http://127.0.0.1:29170/index-mcp/streamable-http",
+                targets = emptyList()
+            )
+            fail("Expected broad-plus-repo Codex command generation to fail when no repo targets exist")
         } catch (e: IllegalStateException) {
             assertTrue(e.message?.contains("No repo-scoped MCP endpoints are available") == true)
         }

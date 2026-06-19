@@ -266,6 +266,40 @@ object ClientConfigGenerator {
         }
     }
 
+    internal fun buildBroadAndRepoScopedCodexCommand(
+        broadServerName: String,
+        broadServerUrl: String,
+        targets: List<RepoScopedCodexTarget>,
+        platform: CommandPlatform = CommandPlatform.POSIX
+    ): String {
+        if (targets.isEmpty()) {
+            throw IllegalStateException(
+                "No repo-scoped MCP endpoints are available. Open a workspace with Git roots to install repo-scoped Codex servers."
+            )
+        }
+
+        val separator = commandSeparator(platform)
+        val commands = buildList {
+            add(
+                buildCodexCommand(
+                    serverUrl = broadServerUrl,
+                    serverName = broadServerName,
+                    platform = platform
+                )
+            )
+            targets.forEach { target ->
+                add(
+                    buildCodexCommand(
+                        serverUrl = target.serverUrl,
+                        serverName = target.serverName,
+                        platform = platform
+                    )
+                )
+            }
+        }
+        return commands.joinToString(separator)
+    }
+
     private fun commandSeparator(platform: CommandPlatform): String =
         when (platform) {
             CommandPlatform.POSIX -> " ; "
@@ -359,9 +393,9 @@ object ClientConfigGenerator {
 
             ClientType.CODEX_CLI -> """
                 Runs installation command in your terminal.
-                Installs one repo-scoped Codex server per discovered Git repo in the current IDE window.
+                Installs the broad $serverName workspace server plus one repo-scoped Codex server per discovered Git repo in the current IDE window.
                 Automatically handles reinstall if already installed (port may change).
-                This flow does not add the broad $serverName entry.
+                Use the repo-scoped names for repo-local work and keep the broad $serverName entry for intentional workspace-wide questions.
 
                 To remove manually: codex mcp remove $serverName
             """.trimIndent()
@@ -424,6 +458,11 @@ object ClientConfigGenerator {
             port = settings.serverPort,
             baseServerName = baseServerName
         )
-        return buildRepoScopedCodexCommand(targets, platform)
+        return buildBroadAndRepoScopedCodexCommand(
+            broadServerName = baseServerName,
+            broadServerUrl = "http://${settings.serverHost}:${settings.serverPort}${McpConstants.STREAMABLE_HTTP_ENDPOINT_PATH}",
+            targets = targets,
+            platform = platform
+        )
     }
 }

@@ -101,6 +101,7 @@ class FindSymbolTool : AbstractMcpTool() {
         if (query.isBlank()) {
             return createErrorResult("Query cannot be empty")
         }
+        rejectUnsupportedRepoScope(project, arguments, name)?.let { return it }
 
         requireSmartMode(project)
 

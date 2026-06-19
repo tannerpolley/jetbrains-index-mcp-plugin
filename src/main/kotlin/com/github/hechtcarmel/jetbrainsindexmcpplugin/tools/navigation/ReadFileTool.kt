@@ -69,6 +69,17 @@ class ReadFileTool : AbstractMcpTool() {
             }
         }
 
+        val resolvedProjectFile = if (!filePath.isNullOrBlank()) {
+            resolveScopedFile(project, arguments, filePath)
+                ?: if (optionalStringArg(arguments, ParamNames.PROJECT_PATH) == null) {
+                    PsiUtils.resolveVirtualFileAnywhere(project, filePath)
+                } else {
+                    null
+                }
+        } else {
+            null
+        }
+
         return suspendingReadAction {
             val virtualFile = when {
                 !qualifiedName.isNullOrBlank() -> {
@@ -77,7 +88,7 @@ class ReadFileTool : AbstractMcpTool() {
                         ?: return@suspendingReadAction createErrorResult("Class not found: $qualifiedName")
                     element.containingFile?.virtualFile
                 }
-                !filePath.isNullOrBlank() -> PsiUtils.resolveVirtualFileAnywhere(project, filePath)
+                resolvedProjectFile != null -> resolvedProjectFile
                 else -> null
             } ?: return@suspendingReadAction createErrorResult("File not found: ${filePath ?: qualifiedName}")
 

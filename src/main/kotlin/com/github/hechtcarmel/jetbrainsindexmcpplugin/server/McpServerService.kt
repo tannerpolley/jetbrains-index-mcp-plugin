@@ -20,6 +20,7 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.options.ShowSettingsUtil
+import com.intellij.openapi.project.Project
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -109,7 +110,8 @@ class McpServerService(
             host = host,
             jsonRpcHandler = jsonRpcHandler,
             sseSessionManager = sseSessionManager,
-            coroutineScope = coroutineScope
+            coroutineScope = coroutineScope,
+            repoScopeRegistry = repoScopeRegistry
         )
 
         val result = when (val startResult = server.start()) {
@@ -224,6 +226,8 @@ class McpServerService(
     fun getServerPort(): Int = McpSettings.getInstance().serverPort
 
     fun listRepoScopes(): List<RepoScopeContext> = repoScopeRegistry.listScopes()
+
+    fun listRepoScopes(project: Project): List<RepoScopeContext> = repoScopeRegistry.listScopes(project)
 
     /**
      * Returns information about the server status.

@@ -1,12 +1,15 @@
 # Repo-Scoped Agent Workspace
 
-This fixture gives the plugin a single master project with three nested repos so repo-scoped MCP endpoints can be tested without opening multiple IDE windows.
+This fixture gives the plugin a single master project with sibling repos and one nested submodule-style repo so repo-scoped MCP endpoints can be tested without opening multiple IDE windows.
+
+The committed `master-project/.idea/` metadata is intentional. It makes IntelliJ treat the fixture root as a real project when opened from the command line instead of falling back to a plain text-editor open.
 
 ## Layout
 
 - `master-project/inventory-repo`
 - `master-project/billing-repo`
 - `master-project/analytics-repo`
+- `master-project/submodules/shipping-repo`
 - `agent-briefs/`
 
 Each repo contains:
@@ -47,6 +50,14 @@ That script:
 4. Use the setup script JSON output to confirm the expected repo IDs, server names, and endpoint URLs before testing.
 5. Assign one agent brief per repo from `agent-briefs/`.
 
+## Attach-After-Open Workflow
+
+1. Open the master project and start the MCP plugin server.
+2. Add or verify a sibling repo or nested repo such as `submodules/shipping-repo`.
+3. Call `ide_attach_repo_to_workspace` with the repo path if the repo is not already attached.
+4. Call `ide_get_repo_scoped_client_config`.
+5. Apply the returned Codex command, then smoke the new repo-scoped endpoint.
+
 ## Expected Server Names
 
 If the IDE server name is `intellij-index`, the repo-scoped Codex entries should be:
@@ -54,3 +65,4 @@ If the IDE server name is `intellij-index`, the repo-scoped Codex entries should
 - `intellij-index-inventory-repo`
 - `intellij-index-billing-repo`
 - `intellij-index-analytics-repo`
+- `intellij-index-shipping-repo`

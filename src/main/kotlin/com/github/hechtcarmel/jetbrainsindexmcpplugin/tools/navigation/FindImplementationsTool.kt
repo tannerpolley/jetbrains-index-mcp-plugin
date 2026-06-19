@@ -98,6 +98,7 @@ class FindImplementationsTool : AbstractMcpTool() {
         } catch (_: IllegalStateException) {
             return createInvalidScopeError(rawScope)
         }
+        rejectUnsupportedRepoScope(project, arguments, name)?.let { return it }
         requireSmartMode(project)
 
         val cursorToken = suspendingReadAction {

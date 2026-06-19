@@ -274,6 +274,38 @@ class KtorMcpServerUnitTest : TestCase() {
         assertEquals(HttpStatusCode.NotFound.value, response.statusCode())
     }
 
+    fun testRepoScopedRoutesRefreshWhenRepoRootIsAttachedAfterServerStart() {
+        server.stop()
+
+        val roots = mutableListOf(repoScopedRoot)
+        repoScopeRegistry = RepoScopeRegistry { roots.toList() }
+        port = findFreePort()
+        server = createServer(port)
+        assertEquals(KtorMcpServer.StartResult.Success, server.start())
+
+        val beforeAttach = sendRequest(
+            method = "POST",
+            path = repoScopedStreamablePath("shipping-repo"),
+            body = initializeRequestBody("2025-03-26")
+        )
+        assertEquals(HttpStatusCode.NotFound.value, beforeAttach.statusCode())
+
+        roots += "C:/workspace/master/submodules/shipping-repo"
+
+        val afterAttach = sendRequest(
+            method = "POST",
+            path = repoScopedStreamablePath("shipping-repo"),
+            body = initializeRequestBody("2025-03-26")
+        )
+
+        assertEquals(HttpStatusCode.OK.value, afterAttach.statusCode())
+        val responseBody = json.parseToJsonElement(afterAttach.body()).jsonObject
+        assertEquals(
+            "2025-03-26",
+            responseBody["result"]!!.jsonObject["protocolVersion"]!!.jsonPrimitive.content
+        )
+    }
+
     fun testRepoScopedSseHandshakeAdvertisesRepoScopedPostEndpoint() {
         val response = openSseStream(repoScopedSsePath(repoScopedId))
         response.body().use {
@@ -313,6 +345,26 @@ class KtorMcpServerUnitTest : TestCase() {
         )
 
         assertEquals(HttpStatusCode.OK.value, response.statusCode())
+    }
+
+    fun testRepoScopedStreamableRequestStillWorksAfterRestart() {
+        server.stop()
+
+        port = findFreePort()
+        server = createServer(port)
+        assertEquals(KtorMcpServer.StartResult.Success, server.start())
+
+        val response = sendRequest(
+            method = "POST",
+            path = repoScopedStreamablePath(repoScopedId),
+            body = """{"jsonrpc":"2.0","id":1,"method":"ping"}"""
+        )
+
+        assertEquals(HttpStatusCode.OK.value, response.statusCode())
+
+        val responseBody = json.parseToJsonElement(response.body()).jsonObject
+        assertEquals("1", responseBody["id"]!!.jsonPrimitive.content)
+        assertNotNull(responseBody["result"])
     }
 
     private fun createServer(port: Int): KtorMcpServer {

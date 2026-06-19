@@ -26,6 +26,7 @@ import com.intellij.openapi.editor.Document
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.util.TextRange
 import com.intellij.openapi.vfs.LocalFileSystem
 import java.io.File
@@ -221,8 +222,9 @@ abstract class AbstractMcpTool : McpTool {
      * @return A [ToolCallResult] containing the operation result or error
      */
     final override suspend fun execute(project: Project, arguments: JsonObject): ToolCallResult {
-        val settings = McpSettings.getInstance()
-        if (requiresPsiSync && settings.syncExternalChanges) {
+        val syncExternalChanges = runCatching { McpSettings.getInstance().syncExternalChanges }
+            .getOrDefault(false)
+        if (requiresPsiSync && syncExternalChanges) {
             ensurePsiUpToDate(project)
         }
         return doExecute(project, arguments)
@@ -377,6 +379,82 @@ abstract class AbstractMcpTool : McpTool {
         }
 
         return null
+    }
+
+    /**
+     * Resolves a file path while honoring an optional project_path boundary from tool arguments.
+     *
+     * When project_path is present, relative paths are constrained to that root and absolute
+     * paths must remain inside it. When project_path is absent, falls back to normal workspace
+     * resolution across the project base path and module content roots.
+     */
+    protected fun resolveScopedFile(project: Project, arguments: JsonObject, filePath: String): VirtualFile? {
+        val requestedProjectPath = optionalStringArg(arguments, ParamNames.PROJECT_PATH)
+        if (requestedProjectPath != null) {
+            return resolveFileUnderRoot(project, requestedProjectPath, filePath)
+        }
+
+        return resolveFile(project, filePath)
+    }
+
+    protected fun resolveFileUnderRoot(project: Project, rootPath: String, filePath: String): VirtualFile? {
+        val rootCanonical = File(rootPath).canonicalFile
+        val normalizedRelativePath = filePath.replace('\\', '/')
+        val rootVirtualFile = resolveRootVirtualFile(project, rootCanonical)?.also { root ->
+            root.refresh(false, true)
+        }
+
+        if (!File(filePath).isAbsolute) {
+            rootVirtualFile?.findFileByRelativePath(normalizedRelativePath)?.let { virtualFile ->
+                return virtualFile
+            }
+        }
+
+        val candidateCanonical = if (File(filePath).isAbsolute) {
+            File(filePath).canonicalFile
+        } else {
+            File(rootCanonical, filePath).canonicalFile
+        }
+
+        val rootPrefix = rootCanonical.path + File.separator
+        val candidatePath = candidateCanonical.path
+        if (candidatePath != rootCanonical.path && !candidatePath.startsWith(rootPrefix)) {
+            return null
+        }
+
+        val normalizedCandidatePath = candidateCanonical.path.replace('\\', '/')
+        return LocalFileSystem.getInstance().refreshAndFindFileByPath(normalizedCandidatePath)
+    }
+
+    private fun resolveRootVirtualFile(project: Project, rootCanonical: File): VirtualFile? =
+        ProjectRootManager.getInstance(project).contentRoots
+            .firstOrNull { contentRoot ->
+                File(contentRoot.path).canonicalPath == rootCanonical.path
+            }
+            ?: LocalFileSystem.getInstance().refreshAndFindFileByPath(rootCanonical.path.replace('\\', '/'))
+
+    /**
+     * Rejects repo-scoped or module-scoped execution for tools that are not yet safe to constrain
+     * below the IntelliJ project base path. The broad project root remains allowed.
+     */
+    protected fun rejectUnsupportedRepoScope(
+        project: Project,
+        arguments: JsonObject,
+        toolName: String
+    ): ToolCallResult? {
+        val requestedProjectPath = optionalStringArg(arguments, ParamNames.PROJECT_PATH) ?: return null
+        val basePath = project.basePath?.let(ProjectResolver::normalizePath) ?: return null
+        val normalizedRequestedPath = ProjectResolver.normalizePath(requestedProjectPath)
+        if (normalizedRequestedPath == basePath) {
+            return null
+        }
+
+        return createStructuredErrorResult(buildJsonObject {
+            put("error", JsonPrimitive(ErrorMessages.ERROR_REPO_SCOPE_UNSUPPORTED))
+            put("message", JsonPrimitive(ErrorMessages.repoScopeUnsupported(toolName, requestedProjectPath)))
+            put("tool", JsonPrimitive(toolName))
+            put(ParamNames.PROJECT_PATH, JsonPrimitive(requestedProjectPath))
+        })
     }
 
     /**
@@ -766,7 +844,8 @@ abstract class AbstractMcpTool : McpTool {
 
     @PublishedApi
     internal fun formatStructuredPayload(jsonText: String): String {
-        val format = McpSettings.getInstance().responseFormat
+        val format = runCatching { McpSettings.getInstance().responseFormat }
+            .getOrDefault(McpSettings.ResponseFormat.JSON)
         return ResponseFormatter.formatStructuredPayload(jsonText, format)
     }
 

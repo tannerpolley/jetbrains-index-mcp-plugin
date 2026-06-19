@@ -116,7 +116,7 @@ The easiest way to configure your AI assistant:
    - **Copy Configuration** - For other clients: Copies the JSON config to your clipboard
 4. For "Copy Configuration" clients, paste the config into the appropriate config file
 
-When the current IDE window contains multiple Git repos, the Codex CLI path installs one repo-scoped MCP server per discovered repo using names like `<ide-server-name>-<repo-id>`.
+When the current IDE window contains multiple Git repos, the Codex CLI path installs the broad workspace server plus one repo-scoped MCP server per discovered repo using names like `<ide-server-name>-<repo-id>`.
 
 ## Community Integrations
 
@@ -149,25 +149,31 @@ To remove: `claude mcp remove <server-name>` (e.g., `claude mcp remove intellij-
 
 ### Codex CLI
 
-Use the "Install on Coding Agents" button in the tool window. For a master IDE window with multiple Git repos, the Codex path installs one repo-scoped MCP server per discovered repo and targets the additive `/index-mcp/repos/<repo-id>/streamable-http` routes.
+Use the "Install on Coding Agents" button in the tool window. For a master IDE window with multiple Git repos, the Codex path installs the broad workspace server plus one repo-scoped MCP server per discovered repo and targets the additive `/index-mcp/repos/<repo-id>/streamable-http` routes.
 
 Example for two discovered repos in IntelliJ IDEA:
 
 ```bash
-codex mcp remove intellij-index-alpha >/dev/null 2>&1 ; codex mcp add intellij-index-alpha --url http://127.0.0.1:29170/index-mcp/repos/alpha/streamable-http ; codex mcp remove intellij-index-beta >/dev/null 2>&1 ; codex mcp add intellij-index-beta --url http://127.0.0.1:29170/index-mcp/repos/beta/streamable-http
+codex mcp remove intellij-index >/dev/null 2>&1 ; codex mcp add intellij-index --url http://127.0.0.1:29170/index-mcp/streamable-http ; codex mcp remove intellij-index-alpha >/dev/null 2>&1 ; codex mcp add intellij-index-alpha --url http://127.0.0.1:29170/index-mcp/repos/alpha/streamable-http ; codex mcp remove intellij-index-beta >/dev/null 2>&1 ; codex mcp add intellij-index-beta --url http://127.0.0.1:29170/index-mcp/repos/beta/streamable-http
 ```
 
 Naming and behavior:
 
+- The default install set includes the broad workspace entry `intellij-index`
 - Server names use `<ide-server-name>-<repo-id>`, for example `intellij-index-alpha`
 - Each repo-scoped entry talks to `/index-mcp/repos/<repo-id>/streamable-http`
-- The multi-repo Codex flow does not add the broad `/index-mcp/streamable-http` entry
+- Use repo-scoped entries for repo-local work and keep the broad `/index-mcp/streamable-http` entry for intentional workspace-wide questions
+- Current repo-scoped contract: `ide_index_status`, `ide_find_file`, `ide_search_text`, `ide_file_structure`, `ide_read_file`, and `ide_open_file` are covered by repo-scoped regression tests; `ide_find_definition`, `ide_find_symbol`, `ide_find_implementations`, `ide_call_hierarchy`, and `ide_type_hierarchy` currently reject repo-scoped/module-scoped sub-root execution with a structured `repo_scope_unsupported` error instead of returning potentially cross-repo results
 
-If you intentionally want the legacy broad server instead of repo-scoped entries, add it manually:
+Agents can also call `ide_attach_repo_to_workspace` with a `repo_path` to attach a sibling or nested Git repo to the current IntelliJ workspace without opening another IDE window. After attachment, call `ide_get_repo_scoped_client_config` to export refreshed broad-plus-scoped Codex CLI registration output, then apply that command in Codex.
+
+If you want to add or repair only the broad workspace entry manually:
 
 ```bash
 codex mcp add intellij-index --url http://127.0.0.1:29170/index-mcp/streamable-http
 ```
+
+To remove the broad workspace entry: `codex mcp remove intellij-index`
 
 To remove a repo-scoped entry: `codex mcp remove <server-name>` (for example `codex mcp remove intellij-index-alpha`)
 
@@ -234,7 +240,7 @@ Each JetBrains IDE has a unique default port and server name to allow running mu
 
 ## Available Tools
 
-The plugin provides **21 MCP tools** organized by availability. Tools marked *(disabled by default)* can be enabled in <kbd>Settings</kbd> > <kbd>Tools</kbd> > <kbd>Index MCP Server</kbd>.
+The plugin provides **23 MCP tools** organized by availability. Tools marked *(disabled by default)* can be enabled in <kbd>Settings</kbd> > <kbd>Tools</kbd> > <kbd>Index MCP Server</kbd>.
 
 ### Universal Tools
 
@@ -251,6 +257,8 @@ These tools work in all supported JetBrains IDEs.
 | `ide_diagnostics` | Analyze file problems with fresh editor diagnostics for open files or public batch diagnostics for closed files, plus optional build/test results; intentions are best-effort |
 | `ide_index_status` | Check if the IDE is in dumb mode or smart mode |
 | `ide_sync_files` | Force sync IDE's virtual file system and PSI cache with external file changes |
+| `ide_attach_repo_to_workspace` | Attach a Git repo to the current IntelliJ workspace without opening a second IDE window |
+| `ide_get_repo_scoped_client_config` | Export refreshed broad-plus-repo-scoped Codex client configuration |
 | `ide_build_project` | Build project using IDE's build system (JPS, Gradle, Maven) with structured errors *(disabled by default)* |
 | `ide_read_file` | Read file content by path or qualified name, including library/jar sources *(disabled by default)* |
 | `ide_get_active_file` | Get the currently active file(s) in the editor with cursor position *(disabled by default)* |
@@ -337,6 +345,7 @@ The plugin supports **workspace projects** where a single IDE window contains mu
 - The **workspace root** path
 - A **sub-project path** (module content root)
 - A **subdirectory** of any open project
+- A **subdirectory** under a loaded module/content root, even when that module lives outside the workspace root directory
 
 When an error occurs, the response returns `available_projects`. By default this includes workspace sub-projects so AI agents can discover valid module content roots. If you want smaller error payloads, switch **Project list in error responses** to **Compact** in plugin settings to return only top-level project roots.
 

@@ -21,6 +21,8 @@ These tools work in every supported JetBrains IDE:
 | `ide_diagnostics` | Analyze file problems with fresh IDE diagnostics, plus optional build/test results | Enabled |
 | `ide_index_status` | Check indexing status | Enabled |
 | `ide_sync_files` | Force sync VFS/PSI cache | Enabled |
+| `ide_attach_repo_to_workspace` | Attach a Git repo to the current workspace | Enabled |
+| `ide_get_repo_scoped_client_config` | Export broad-plus-repo-scoped Codex config | Enabled |
 | `ide_build_project` | Build project with structured errors | Disabled |
 | `ide_read_file` | Read file content by path or qualified name | Disabled |
 | `ide_get_active_file` | Get currently active editor file(s) | Disabled |
@@ -62,6 +64,8 @@ These tools activate based on available language plugins:
   - [ide_find_symbol](#ide_find_symbol)
   - [ide_diagnostics](#ide_diagnostics)
   - [ide_index_status](#ide_index_status)
+  - [ide_attach_repo_to_workspace](#ide_attach_repo_to_workspace)
+  - [ide_get_repo_scoped_client_config](#ide_get_repo_scoped_client_config)
   - [ide_sync_files](#ide_sync_files)
   - [ide_build_project](#ide_build_project)
   - [ide_read_file](#ide_read_file)
@@ -90,7 +94,20 @@ All tools accept an optional `project_path` parameter:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `project_path` | string | No | Absolute path to the project root. Required when multiple projects are open in the IDE. For workspace projects, use the sub-project path. |
+| `project_path` | string | No | Absolute path to the project root. Required when multiple projects are open in the IDE. For workspace projects, use the sub-project path, a loaded module/content root, or a subdirectory under that module root. |
+
+### Repo-Scoped Endpoint Note
+
+When Codex CLI is installed from a multi-repo IDE window, the upstream installer can emit one broad workspace MCP server plus one repo-scoped MCP server per discovered Git root.
+
+For attach-after-open workflows, call `ide_attach_repo_to_workspace` with the new Git repo path, then call `ide_get_repo_scoped_client_config` to export the refreshed broad-plus-scoped Codex registration command.
+
+Current repo-scoped classification:
+
+- Repo-safe by regression coverage: `ide_index_status`, `ide_find_file`, `ide_search_text`, `ide_file_structure`, `ide_read_file`, `ide_open_file`
+- Explicit reject-only in repo-scoped/module-scoped mode: `ide_find_definition`, `ide_find_symbol`, `ide_find_implementations`, `ide_call_hierarchy`, `ide_type_hierarchy`
+
+Those reject-only tools currently return a structured `repo_scope_unsupported` error when asked to run against a workspace sub-root, rather than returning a potentially cross-repo result.
 
 ### Position Parameters
 
@@ -608,6 +625,62 @@ Checks if the IDE is in dumb mode (indexing) or smart mode.
   "isSmartMode": true,
   "isIndexing": false,
   "projectName": "my-application"
+}
+```
+
+---
+
+### ide_attach_repo_to_workspace
+
+Attach an existing Git repo directory to the current IntelliJ workspace without opening a second IDE window.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `repo_path` | string | Yes | Absolute path to an existing Git repo directory |
+| `project_path` | string | No | Current workspace project path |
+
+**Example Request:**
+
+```json
+{
+  "method": "tools/call",
+  "params": {
+    "name": "ide_attach_repo_to_workspace",
+    "arguments": {
+      "repo_path": "C:/work/master/submodules/shipping-repo"
+    }
+  }
+}
+```
+
+---
+
+### ide_get_repo_scoped_client_config
+
+Export refreshed broad-plus-repo-scoped Codex MCP registration output after workspace repo attach or refresh.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `client` | string | No | `codex_cli` |
+| `platform` | string | No | `current`, `posix`, or `windows` |
+| `project_path` | string | No | Current workspace project path |
+
+**Example Request:**
+
+```json
+{
+  "method": "tools/call",
+  "params": {
+    "name": "ide_get_repo_scoped_client_config",
+    "arguments": {
+      "client": "codex_cli",
+      "platform": "windows"
+    }
+  }
 }
 ```
 

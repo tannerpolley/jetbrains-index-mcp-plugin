@@ -83,6 +83,7 @@ class CallHierarchyTool : AbstractMcpTool() {
         if (direction !in listOf("callers", "callees")) {
             return createErrorResult("direction must be 'callers' or 'callees'")
         }
+        rejectUnsupportedRepoScope(project, arguments, name)?.let { return it }
 
         requireSmartMode(project)
 

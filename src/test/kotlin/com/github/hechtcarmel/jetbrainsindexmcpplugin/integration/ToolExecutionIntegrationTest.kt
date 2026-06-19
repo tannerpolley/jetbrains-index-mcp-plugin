@@ -22,6 +22,8 @@ import com.intellij.openapi.roots.ModuleRootModificationUtil
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiManager
+import com.intellij.testFramework.IndexingTestUtil
+import com.intellij.testFramework.PsiTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import java.io.File
 import java.nio.file.Files
@@ -32,6 +34,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**
@@ -422,6 +425,62 @@ class ToolExecutionIntegrationTest : BasePlatformTestCase() {
         assertTrue("Should error with invalid file", resultInvalid.isError)
     }
 
+    fun testRepoScopedProjectPathRejectsUnsupportedNavigationTools() = runBlocking {
+        val fixture = createRepoScopedNavigationFixture()
+
+        assertRepoScopeUnsupported(
+            FindDefinitionTool(),
+            buildJsonObject {
+                put("file", fixture.relativeFilePath)
+                put("line", fixture.line)
+                put("column", fixture.column)
+                put("project_path", fixture.repoRoot)
+            },
+            fixture.repoRoot
+        )
+
+        assertRepoScopeUnsupported(
+            FindImplementationsTool(),
+            buildJsonObject {
+                put("file", fixture.relativeFilePath)
+                put("line", fixture.line)
+                put("column", fixture.column)
+                put("project_path", fixture.repoRoot)
+            },
+            fixture.repoRoot
+        )
+
+        assertRepoScopeUnsupported(
+            CallHierarchyTool(),
+            buildJsonObject {
+                put("file", fixture.relativeFilePath)
+                put("line", fixture.line)
+                put("column", fixture.column)
+                put("direction", "callers")
+                put("project_path", fixture.repoRoot)
+            },
+            fixture.repoRoot
+        )
+
+        assertRepoScopeUnsupported(
+            TypeHierarchyTool(),
+            buildJsonObject {
+                put("className", fixture.className)
+                put("project_path", fixture.repoRoot)
+            },
+            fixture.repoRoot
+        )
+
+        assertRepoScopeUnsupported(
+            com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.navigation.FindSymbolTool(),
+            buildJsonObject {
+                put("query", "RepoScopedService")
+                put("project_path", fixture.repoRoot)
+            },
+            fixture.repoRoot
+        )
+    }
+
     // Intelligence Tools Tests
 
     fun testGetDiagnosticsToolEndToEnd() = runBlocking {
@@ -609,4 +668,62 @@ class ToolExecutionIntegrationTest : BasePlatformTestCase() {
         val column = offset - before.lastIndexOf('\n').let { if (it == -1) -1 else it } 
         return line to column
     }
+
+    private suspend fun assertRepoScopeUnsupported(
+        tool: com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.McpTool,
+        arguments: kotlinx.serialization.json.JsonObject,
+        expectedProjectPath: String
+    ) {
+        val result = tool.execute(project, arguments)
+        assertTrue("${tool.name} should reject repo-scoped project_path", result.isError)
+
+        val content = result.content.first() as ContentBlock.Text
+        val errorJson = json.parseToJsonElement(content.text).jsonObject
+        assertEquals("repo_scope_unsupported", errorJson["error"]?.jsonPrimitive?.content)
+        assertEquals(tool.name, errorJson["tool"]?.jsonPrimitive?.content)
+        assertEquals(expectedProjectPath, errorJson["project_path"]?.jsonPrimitive?.content)
+    }
+
+    private fun createRepoScopedNavigationFixture(): RepoScopedNavigationFixture {
+        val projectRoot = Path.of(requireNotNull(project.basePath) { "Project base path should be available in tests" })
+        val repoRootPath = Files.createDirectories(projectRoot.resolve("repo-scope-probe"))
+        val repoRoot = requireNotNull(LocalFileSystem.getInstance().refreshAndFindFileByNioFile(repoRootPath)) {
+            "Expected VFS directory for $repoRootPath"
+        }
+        PsiTestUtil.addSourceRoot(module, repoRoot, false)
+
+        val relativeFilePath = "probe/RepoScopedService.java"
+        val source = """
+            package probe;
+
+            public class RepoScopedService {
+                public void run() {
+                }
+            }
+        """.trimIndent()
+
+        val file = repoRootPath.resolve(relativeFilePath)
+        Files.createDirectories(file.parent)
+        Files.writeString(file, source)
+        LocalFileSystem.getInstance().refreshAndFindFileByNioFile(file)
+        PsiDocumentManager.getInstance(project).commitAllDocuments()
+        IndexingTestUtil.waitUntilIndexesAreReady(project)
+
+        val (line, column) = findPosition(source, "run")
+        return RepoScopedNavigationFixture(
+            repoRoot = repoRootPath.toString().replace('\\', '/'),
+            relativeFilePath = relativeFilePath,
+            className = "probe.RepoScopedService",
+            line = line,
+            column = column
+        )
+    }
+
+    private data class RepoScopedNavigationFixture(
+        val repoRoot: String,
+        val relativeFilePath: String,
+        val className: String,
+        val line: Int,
+        val column: Int
+    )
 }

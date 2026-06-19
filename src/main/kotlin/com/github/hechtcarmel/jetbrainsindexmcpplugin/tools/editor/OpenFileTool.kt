@@ -14,8 +14,6 @@ import kotlinx.serialization.json.jsonPrimitive
 
 class OpenFileTool : AbstractMcpTool() {
 
-    override val requiresPsiSync: Boolean = false
-
     override val name = ToolNames.OPEN_FILE
 
     override val description = """
@@ -53,7 +51,7 @@ class OpenFileTool : AbstractMcpTool() {
             return createErrorResult("Parameter 'column' must be >= 1, got $column.")
         }
 
-        val virtualFile = resolveFile(project, filePath)
+        val virtualFile = resolveScopedFile(project, arguments, filePath)
             ?: return createErrorResult("File not found: $filePath")
 
         val relativePath = getRelativePath(project, virtualFile)

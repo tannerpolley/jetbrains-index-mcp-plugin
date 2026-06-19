@@ -200,6 +200,26 @@ data class SyncFilesResult(
     val message: String
 )
 
+@Serializable
+data class RepoScopedClientConfigResult(
+    val client: String,
+    val platform: String,
+    val broadServerName: String,
+    val broadServerUrl: String,
+    val installCommand: String,
+    val repoServers: List<RepoScopedClientConfigTarget>,
+    val projectName: String,
+    val projectPath: String?
+)
+
+@Serializable
+data class RepoScopedClientConfigTarget(
+    val repoId: String,
+    val serverName: String,
+    val serverUrl: String,
+    val gitRootPath: String
+)
+
 // ide_build_project output
 @Serializable
 data class BuildMessage(

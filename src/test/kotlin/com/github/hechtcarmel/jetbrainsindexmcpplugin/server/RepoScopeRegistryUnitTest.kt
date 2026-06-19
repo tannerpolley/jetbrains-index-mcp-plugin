@@ -28,6 +28,78 @@ class RepoScopeRegistryUnitTest : TestCase() {
         assertEquals(listOf("service", "service-2"), serviceIds)
     }
 
+    fun testBuildScopesAssignsCollisionSuffixesDeterministicallyAcrossInputOrder() {
+        val first = RepoScopeRegistry.buildScopes(
+            listOf(
+                "/work/zeta/service",
+                "/work/alpha/service"
+            )
+        )
+        val second = RepoScopeRegistry.buildScopes(
+            listOf(
+                "/work/alpha/service",
+                "/work/zeta/service"
+            )
+        )
+
+        assertEquals(
+            first.map { it.repoId to it.gitRootPath },
+            second.map { it.repoId to it.gitRootPath }
+        )
+    }
+
+    fun testBuildScopesIncludesNestedGitRootsForSubmoduleStyleWorkspaces() {
+        val scopes = RepoScopeRegistry.buildScopes(
+            listOf(
+                "/work/master/modules/service",
+                "/work/master",
+                "/work/master/modules/docs"
+            )
+        )
+
+        assertEquals(
+            listOf(
+                "master" to "/work/master",
+                "docs" to "/work/master/modules/docs",
+                "service" to "/work/master/modules/service"
+            ),
+            scopes.map { it.repoId to it.gitRootPath }
+        )
+    }
+
+    fun testBuildScopesDeduplicatesEquivalentRootsAfterNormalization() {
+        val scopes = RepoScopeRegistry.buildScopes(
+            listOf(
+                "C:\\work\\master\\module\\service\\",
+                "C:/work/master/module/service"
+            )
+        )
+
+        assertEquals(1, scopes.size)
+        assertEquals("service", scopes.single().repoId)
+        assertEquals("C:/work/master/module/service", scopes.single().gitRootPath)
+    }
+
+    fun testListScopesRefreshesWhenSiblingAndNestedRootsAreAttachedAfterOpen() {
+        val roots = mutableListOf("/work/master/inventory-repo")
+        val registry = RepoScopeRegistry { roots.toList() }
+
+        assertEquals(listOf("inventory-repo"), registry.listScopes().map { it.repoId })
+
+        roots += "/work/master/billing-repo"
+        roots += "/work/master/submodules/shipping-repo"
+
+        val refreshedScopes = registry.listScopes()
+        assertEquals(
+            listOf("billing-repo", "inventory-repo", "shipping-repo"),
+            refreshedScopes.map { it.repoId }
+        )
+        assertEquals(
+            "/work/master/submodules/shipping-repo",
+            registry.findByRepoId("shipping-repo")?.gitRootPath
+        )
+    }
+
     fun testFindByRepoIdReturnsNullWhenUnknown() {
         val registry = RepoScopeRegistry {
             listOf("/work/acme/service")

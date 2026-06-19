@@ -320,6 +320,29 @@ Reformat code per project style (.editorconfig, IDE settings). Equivalent to Ctr
 
 ## Project Tools
 
+### ide_attach_repo_to_workspace
+Attach a Git repo directory to the current IntelliJ workspace without opening a second IDE window.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `repo_path` | string | yes | Absolute path to an existing Git repo directory |
+| `project_path` | string | no | Current workspace project path |
+
+**Returns**: `{ attached, alreadyAttached, repoPath, projectName, projectPath, contentRoots }`
+After this succeeds, call `ide_get_repo_scoped_client_config` and apply the returned Codex command to refresh agent-side MCP registrations.
+
+### ide_get_repo_scoped_client_config
+Export deterministic broad-plus-repo-scoped client configuration for discovered Git roots.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `client` | enum | no | `codex_cli` |
+| `platform` | enum | no | `current`, `posix`, or `windows` |
+| `project_path` | string | no | Current workspace project path |
+
+**Returns**: `{ client, platform, broadServerName, broadServerUrl, installCommand, repoServers, projectName, projectPath }`
+Use the broad entry for intentional workspace-wide questions and repo-scoped entries for repo-local work.
+
 ### ide_index_status
 Check if IDE is ready for code intelligence operations.
 

@@ -82,6 +82,16 @@ $repos = @(
             "analytics-repo/src/analytics/analyticsLedger.ts"
         )
     }
+    [pscustomobject]@{
+        name = "submodules/shipping-repo"
+        repo_id = "shipping-repo"
+        unique_token = "shippingrepouniquetoken"
+        shared_query = "workspacescopetoken"
+        file_query = "SharedScopeProbe"
+        relative_keep_paths = @(
+            "submodules/shipping-repo/src/shipping/SharedScopeProbe.ts"
+        )
+    }
 )
 
 foreach ($repo in $repos) {

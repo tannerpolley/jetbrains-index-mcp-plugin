@@ -2,6 +2,7 @@ package com.github.hechtcarmel.jetbrainsindexmcpplugin.integration
 
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.McpConstants
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.constants.ToolNames
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.LanguageHandlerRegistry
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.JsonRpcHandler
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.RepoScopeContext
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.models.ContentBlock
@@ -9,6 +10,7 @@ import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.models.JsonRpcReque
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.models.JsonRpcResponse
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.models.ToolCallResult
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolRegistry
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.models.FileStructureResult
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.models.FindFileResult
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.models.SearchTextResult
 import com.intellij.openapi.vfs.VirtualFile
@@ -35,9 +37,18 @@ class RepoScopedAgentWorkspaceIntegrationTest : BasePlatformTestCase() {
 
     override fun setUp() {
         super.setUp()
+        LanguageHandlerRegistry.registerHandlers()
         toolRegistry = ToolRegistry()
         toolRegistry.registerBuiltInTools()
         handler = JsonRpcHandler(toolRegistry)
+    }
+
+    override fun tearDown() {
+        try {
+            LanguageHandlerRegistry.clear()
+        } finally {
+            super.tearDown()
+        }
     }
 
     fun testRepoScopedEndpointFindFileKeepsThreeRepoWorkspaceBoundaries() = runBlocking {
@@ -101,6 +112,38 @@ class RepoScopedAgentWorkspaceIntegrationTest : BasePlatformTestCase() {
         }
     }
 
+    fun testRepoScopedEndpointFileStructureKeepsThreeRepoWorkspaceBoundaries() = runBlocking {
+        val fixture = createAgentWorkspaceFixture()
+
+        fixture.repos.forEach { targetRepo ->
+            val result = callRepoScopedTool(
+                toolName = ToolNames.FILE_STRUCTURE,
+                repoScope = targetRepo.scope,
+                arguments = buildJsonObject {
+                    put("file", targetRepo.structureRelativePath)
+                }
+            )
+
+            assertFalse(
+                "Repo-scoped file structure should succeed for ${targetRepo.repoName}: ${result.content}",
+                result.isError
+            )
+            val structure = json.decodeFromString<FileStructureResult>((result.content.first() as ContentBlock.Text).text)
+
+            assertTrue(
+                "Scoped file structure should keep ${targetRepo.structureMarker}; got ${structure.structure}",
+                structure.structure.contains(targetRepo.structureMarker)
+            )
+
+            fixture.repos.filter { it.repoName != targetRepo.repoName }.forEach { otherRepo ->
+                assertFalse(
+                    "Scoped file structure for ${targetRepo.repoName} should exclude ${otherRepo.structureMarker}; got ${structure.structure}",
+                    structure.structure.contains(otherRepo.structureMarker)
+                )
+            }
+        }
+    }
+
     private suspend fun callRepoScopedTool(
         toolName: String,
         repoScope: RepoScopeContext,
@@ -145,6 +188,14 @@ class RepoScopedAgentWorkspaceIntegrationTest : BasePlatformTestCase() {
                 object InventoryLedger {
                     const val repoToken = "inventoryrepouniquetoken"
                 }
+            """.trimIndent(),
+            structureRelativeFilePath = "src/shared/ScopedStructureProbe.java",
+            structureFileText = """
+                package shared;
+
+                class InventoryStructureProbe {
+                    String inventoryOnly() { return "inventory"; }
+                }
             """.trimIndent()
         )
         val billingRepo = createRepoRoot(
@@ -164,6 +215,14 @@ class RepoScopedAgentWorkspaceIntegrationTest : BasePlatformTestCase() {
 
                 object BillingLedger {
                     const val repoToken = "billingrepouniquetoken"
+                }
+            """.trimIndent(),
+            structureRelativeFilePath = "src/shared/ScopedStructureProbe.java",
+            structureFileText = """
+                package shared;
+
+                class BillingStructureProbe {
+                    String billingOnly() { return "billing"; }
                 }
             """.trimIndent()
         )
@@ -185,6 +244,14 @@ class RepoScopedAgentWorkspaceIntegrationTest : BasePlatformTestCase() {
                 object AnalyticsLedger {
                     const val repoToken = "analyticsrepouniquetoken"
                 }
+            """.trimIndent(),
+            structureRelativeFilePath = "src/shared/ScopedStructureProbe.java",
+            structureFileText = """
+                package shared;
+
+                class AnalyticsStructureProbe {
+                    String analyticsOnly() { return "analytics"; }
+                }
             """.trimIndent()
         )
 
@@ -198,10 +265,13 @@ class RepoScopedAgentWorkspaceIntegrationTest : BasePlatformTestCase() {
         probeRelativeFilePath: String,
         probeFileText: String,
         secondaryRelativeFilePath: String,
-        secondaryFileText: String
+        secondaryFileText: String,
+        structureRelativeFilePath: String,
+        structureFileText: String
     ): RepoFixture {
         val probeFile = myFixture.addFileToProject("$repoName/$probeRelativeFilePath", probeFileText)
         myFixture.addFileToProject("$repoName/$secondaryRelativeFilePath", secondaryFileText)
+        myFixture.addFileToProject("$repoName/$structureRelativeFilePath", structureFileText)
 
         val repoVirtualFile = findRepoRoot(probeFile.virtualFile, repoName)
 
@@ -211,6 +281,8 @@ class RepoScopedAgentWorkspaceIntegrationTest : BasePlatformTestCase() {
         return RepoFixture(
             repoName = repoName,
             expectedRelativePath = probeRelativeFilePath,
+            structureRelativePath = structureRelativeFilePath,
+            structureMarker = structureFileText.substringAfter("class ").substringBefore(" "),
             scope = RepoScopeContext(
                 repoId = repoName,
                 gitRootPath = repoVirtualFile.path.replace('\\', '/')
@@ -233,6 +305,8 @@ class RepoScopedAgentWorkspaceIntegrationTest : BasePlatformTestCase() {
     private data class RepoFixture(
         val repoName: String,
         val expectedRelativePath: String,
+        val structureRelativePath: String,
+        val structureMarker: String,
         val scope: RepoScopeContext
     )
 }

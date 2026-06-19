@@ -3,6 +3,9 @@
 # IDE Index MCP Server Changelog
 
 ## [Unreleased]
+### Added
+- Added agent-callable workspace attach and repo-scoped client-config export tools, with refresh coverage for sibling and nested-submodule-style repo topologies.
+
 ### Fixed
 - Fixed `ide_file_structure` for Lombok/augmented Java classes by skipping generated PSI members without real source offsets. Fixes [#201](https://github.com/hechtcarmel/jetbrains-index-mcp-plugin/issues/201).
 

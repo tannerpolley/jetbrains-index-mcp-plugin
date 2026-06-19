@@ -69,6 +69,7 @@ class TypeHierarchyTool : AbstractMcpTool() {
         } catch (_: IllegalStateException) {
             return createInvalidScopeError(rawScope)
         }
+        rejectUnsupportedRepoScope(project, arguments, name)?.let { return it }
         return suspendingReadAction {
             ProgressManager.checkCanceled() // Allow cancellation
 

@@ -161,14 +161,20 @@ object ProjectResolver {
      * with content roots in different directories.
      */
     private fun findProjectByModuleContentRoot(projects: List<Project>, normalizedPath: String): Project? {
+        var bestMatch: Project? = null
+        var bestMatchLength = -1
+
         for (project in projects) {
             try {
                 val modules = ModuleManager.getInstance(project).modules
                 for (module in modules) {
                     val contentRoots = ModuleRootManager.getInstance(module).contentRoots
                     for (root in contentRoots) {
-                        if (normalizePath(root.path) == normalizedPath) {
-                            return project
+                        val rootPath = normalizePath(root.path)
+                        val isMatch = normalizedPath == rootPath || normalizedPath.startsWith("$rootPath/")
+                        if (isMatch && rootPath.length > bestMatchLength) {
+                            bestMatch = project
+                            bestMatchLength = rootPath.length
                         }
                     }
                 }
@@ -176,7 +182,7 @@ object ProjectResolver {
                 LOG.debug("Failed to check module content roots for project ${project.name}", e)
             }
         }
-        return null
+        return bestMatch
     }
 
     /**

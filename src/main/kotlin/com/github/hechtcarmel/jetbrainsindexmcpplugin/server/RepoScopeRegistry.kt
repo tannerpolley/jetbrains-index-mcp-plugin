@@ -1,13 +1,24 @@
 package com.github.hechtcarmel.jetbrainsindexmcpplugin.server
 
+import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.vcs.ProjectLevelVcsManager
 
-class RepoScopeRegistry(
-    private val gitRootPathProvider: () -> List<String> = ::discoverGitRootPaths
+class RepoScopeRegistry internal constructor(
+    private val gitRootPathProvider: () -> List<String>,
+    private val projectGitRootPathProvider: (Project) -> List<String>
 ) {
 
+    constructor() : this(::discoverGitRootPaths, ::discoverGitRootPaths)
+
+    constructor(gitRootPathProvider: () -> List<String>) : this(
+        gitRootPathProvider = gitRootPathProvider,
+        projectGitRootPathProvider = ::discoverGitRootPaths
+    )
+
     fun listScopes(): List<RepoScopeContext> = buildScopes(gitRootPathProvider())
+
+    fun listScopes(project: Project): List<RepoScopeContext> = buildScopes(projectGitRootPathProvider(project))
 
     fun findByRepoId(repoId: String): RepoScopeContext? =
         listScopes().firstOrNull { it.repoId == repoId }
@@ -49,13 +60,19 @@ class RepoScopeRegistry(
             val openProjects = ProjectManager.getInstance().openProjects
                 .filter { !it.isDefault }
 
-            return openProjects.flatMap { project ->
-                ProjectLevelVcsManager.getInstance(project).getAllVcsRoots()
-                    .asSequence()
-                    .filter { it.vcs?.name.equals("Git", ignoreCase = true) }
-                    .mapNotNull { it.path?.path }
-                    .toList()
+            return openProjects.flatMap(::discoverGitRootPaths)
+        }
+
+        private fun discoverGitRootPaths(project: Project): List<String> {
+            if (project.isDefault) {
+                return emptyList()
             }
+
+            return ProjectLevelVcsManager.getInstance(project).getAllVcsRoots()
+                .asSequence()
+                .filter { it.vcs?.name.equals("Git", ignoreCase = true) }
+                .mapNotNull { it.path?.path }
+                .toList()
         }
     }
 }

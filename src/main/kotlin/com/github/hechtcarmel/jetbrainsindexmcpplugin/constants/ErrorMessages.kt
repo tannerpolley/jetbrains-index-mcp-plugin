@@ -52,6 +52,7 @@ object ErrorMessages {
     const val ERROR_PROJECT_NOT_FOUND = "project_not_found"
     const val ERROR_MULTIPLE_PROJECTS = "multiple_projects_open"
     const val ERROR_REPO_SCOPE_CONFLICT = "repo_scope_conflict"
+    const val ERROR_REPO_SCOPE_UNSUPPORTED = "repo_scope_unsupported"
 
     // Project resolution messages
     const val MSG_NO_PROJECT_OPEN = "No project is currently open in the IDE."
@@ -59,6 +60,8 @@ object ErrorMessages {
     const val MSG_MULTIPLE_PROJECTS = "Multiple projects are open. Please specify 'project_path' parameter with one of the available project paths. For workspace projects, use the sub-project path."
     fun repoScopeConflict(repoId: String, expectedProjectPath: String, providedProjectPath: String) =
         "Repo-scoped endpoint '$repoId' is pinned to '$expectedProjectPath' but the request provided project_path '$providedProjectPath'."
+    fun repoScopeUnsupported(toolName: String, projectPath: String) =
+        "Tool '$toolName' does not yet support repo-scoped or module-scoped execution for project_path '$projectPath'."
 
     // Index errors
     const val INDEX_NOT_READY = "IDE is in dumb mode, indexes not available"

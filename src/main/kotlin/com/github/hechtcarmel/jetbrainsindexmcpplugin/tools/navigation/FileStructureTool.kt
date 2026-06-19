@@ -1,12 +1,19 @@
 package com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.navigation
 
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.constants.ParamNames
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.LanguageHandlerRegistry
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.models.ToolCallResult
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.AbstractMcpTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.models.FileStructureResult
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.schema.SchemaBuilder
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.util.TreeFormatter
+import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.roots.ProjectRootManager
+import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.psi.PsiFile
+import com.intellij.psi.PsiManager
+import java.io.File
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -47,7 +54,7 @@ class FileStructureTool : AbstractMcpTool() {
         }
 
         return suspendingReadAction {
-            val psiFile = getPsiFile(project, file)
+            val psiFile = resolveScopedPsiFile(project, arguments, file)
                 ?: return@suspendingReadAction createErrorResult("File not found: $file")
 
             // Get structure handler for this file's language
@@ -78,4 +85,46 @@ class FileStructureTool : AbstractMcpTool() {
             ))
         }
     }
+
+    private fun resolveScopedPsiFile(project: Project, arguments: JsonObject, file: String): PsiFile? {
+        val requestedProjectPath = arguments[ParamNames.PROJECT_PATH]?.jsonPrimitive?.content
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+
+        if (requestedProjectPath != null) {
+            return resolvePsiFileUnderRoot(project, requestedProjectPath, file)
+        }
+
+        return getPsiFile(project, file)
+    }
+
+    private fun resolvePsiFileUnderRoot(project: Project, rootPath: String, file: String): PsiFile? {
+        val rootCanonical = File(rootPath).canonicalFile
+        val normalizedRelativePath = file.replace('\\', '/')
+        val rootVirtualFile = resolveRootVirtualFile(project, rootCanonical)
+
+        if (!File(file).isAbsolute) {
+            rootVirtualFile?.findFileByRelativePath(normalizedRelativePath)?.let { virtualFile ->
+                return PsiManager.getInstance(project).findFile(virtualFile)
+            }
+        }
+
+        val candidateCanonical = if (File(file).isAbsolute) File(file).canonicalFile else File(rootCanonical, file).canonicalFile
+
+        val rootPrefix = rootCanonical.path + File.separator
+        val candidatePath = candidateCanonical.path
+        if (candidatePath != rootCanonical.path && !candidatePath.startsWith(rootPrefix)) {
+            return null
+        }
+
+        val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(candidateCanonical.toPath()) ?: return null
+        return PsiManager.getInstance(project).findFile(virtualFile)
+    }
+
+    private fun resolveRootVirtualFile(project: Project, rootCanonical: File): VirtualFile? =
+        ProjectRootManager.getInstance(project).contentRoots
+            .firstOrNull { contentRoot ->
+                File(contentRoot.path).canonicalPath == rootCanonical.path
+            }
+            ?: LocalFileSystem.getInstance().refreshAndFindFileByNioFile(rootCanonical.toPath())
 }
