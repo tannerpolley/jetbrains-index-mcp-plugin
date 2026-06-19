@@ -345,22 +345,20 @@ object CodexWorkspaceSyncService {
                     return
                 }
 
-                if (source.split(",").all { it == "electron-saved-workspace-roots" }) {
-                    val localRepoName = File(normalized).name
-                    val remoteRepoNames = remoteUrls
-                        .mapNotNull(::githubRepoNameFromRemoteUrl)
-                        .distinctBy { it.lowercase() }
-                    val hasMatchingRepoName = remoteRepoNames.any { it.equals(localRepoName, ignoreCase = true) }
-                    if (remoteRepoNames.isNotEmpty() && !hasMatchingRepoName) {
-                        skipped.add(
-                            CodexWorkspaceSkippedPath(
-                                normalized,
-                                source,
-                                "github_repo_mismatch:${remoteRepoNames.sorted().joinToString("|")}"
-                            )
+                val localRepoName = File(normalized).name
+                val remoteRepoNames = remoteUrls
+                    .mapNotNull(::githubRepoNameFromRemoteUrl)
+                    .distinctBy { it.lowercase() }
+                val hasMatchingRepoName = remoteRepoNames.any { it.equals(localRepoName, ignoreCase = true) }
+                if (remoteRepoNames.isNotEmpty() && !hasMatchingRepoName) {
+                    skipped.add(
+                        CodexWorkspaceSkippedPath(
+                            normalized,
+                            source,
+                            "github_repo_mismatch:${remoteRepoNames.sorted().joinToString("|")}"
                         )
-                        return
-                    }
+                    )
+                    return
                 }
             }
 

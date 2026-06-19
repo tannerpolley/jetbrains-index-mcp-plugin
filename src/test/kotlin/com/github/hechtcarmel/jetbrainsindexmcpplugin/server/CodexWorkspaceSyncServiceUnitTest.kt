@@ -158,7 +158,7 @@ class CodexWorkspaceSyncServiceUnitTest : TestCase() {
 
     fun testBuildPlanRequiresMatchingGitHubOwnerRemoteWhenConfigured() {
         val owned = createGitRepo("owned-repo")
-        val orgOwned = createGitRepo("org-owned-repo")
+        val orgOwned = createGitRepo("ePC-SAFT")
         val noRemote = createGitRepo("no-remote-repo")
         val fork = createGitRepo("fork-repo")
 
@@ -198,7 +198,7 @@ class CodexWorkspaceSyncServiceUnitTest : TestCase() {
         assertTrue(plan.toDetach.isEmpty())
     }
 
-    fun testBuildPlanRequiresCanonicalGitHubRepoNameForSavedRoots() {
+    fun testBuildPlanRequiresCanonicalGitHubRepoNameForGitHubRemotes() {
         val matching = createGitRepo("matching-repo")
         val renamed = createGitRepo("renamed-local")
         val activeRenamed = createGitRepo("active-renamed-local")
@@ -224,14 +224,14 @@ class CodexWorkspaceSyncServiceUnitTest : TestCase() {
         )
 
         assertEquals(
-            listOf(
-                matching.absolutePath.replace('\\', '/'),
-                activeRenamed.absolutePath.replace('\\', '/')
-            ),
+            listOf(matching.absolutePath.replace('\\', '/')),
             plan.accepted.map { it.repoRootPath }
         )
         assertEquals(
-            listOf("github_repo_mismatch:google_drive_work"),
+            listOf(
+                "github_repo_mismatch:google_drive_work",
+                "github_repo_mismatch:google_drive_work"
+            ),
             plan.skipped.map { it.reason }
         )
     }
