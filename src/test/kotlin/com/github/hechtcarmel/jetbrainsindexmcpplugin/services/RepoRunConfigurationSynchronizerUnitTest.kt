@@ -54,8 +54,40 @@ class RepoRunConfigurationSynchronizerUnitTest : BasePlatformTestCase() {
         assertTrue(settings.pathIfStoredInArbitraryFileInProject?.contains(".run") == true)
     }
 
+    fun testSyncKeepsAcceptedMixedCaseRepoRunConfigurations() {
+        val repo = createRepoRunConfig("ePC-SAFT", "ePC-SAFT: Validation")
+        val runConfigFile = File(repo, ".run/ePC-SAFT - Validation.run.xml")
+        RepoRunConfigurationSynchronizer.sync(
+            project = project,
+            acceptedRepos = listOf(
+                CodexWorkspaceSyncService.ResolvedRepo(
+                    repoRootPath = repo.absolutePath,
+                    source = "test"
+                )
+            ),
+            workspaceProjectPath = project.basePath
+        )
+
+        val result = RepoRunConfigurationSynchronizer.sync(
+            project = project,
+            acceptedRepos = listOf(
+                CodexWorkspaceSyncService.ResolvedRepo(
+                    repoRootPath = repo.absolutePath,
+                    source = "test"
+                )
+            ),
+            workspaceProjectPath = project.basePath
+        )
+
+        assertEquals(0, result.imported)
+        assertEquals(0, result.removed)
+        assertTrue(runConfigFile.isFile)
+        assertTrue(RunManager.getInstance(project).allSettings.any { it.name == "ePC-SAFT: Validation" })
+    }
+
     fun testSyncPrunesStaleImportedRepoRunConfigurations() {
         val repo = createRepoRunConfig("repo", "repo: Validation")
+        val runConfigFile = File(repo, ".run/repo - Validation.run.xml")
         RepoRunConfigurationSynchronizer.sync(
             project = project,
             acceptedRepos = listOf(
@@ -75,6 +107,7 @@ class RepoRunConfigurationSynchronizerUnitTest : BasePlatformTestCase() {
 
         assertEquals(0, result.imported)
         assertEquals(1, result.removed)
+        assertTrue(runConfigFile.isFile)
         assertTrue(RunManager.getInstance(project).allSettings.none { it.name == "repo: Validation" })
     }
 

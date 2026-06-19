@@ -85,14 +85,18 @@ object RepoRunConfigurationSynchronizer {
             }
         }
 
-        val expectedStoredPathsByRepoId = runConfigFilesByRepoId.mapValues { (_, runConfigFiles) ->
-            runConfigFiles
-                .mapNotNull { normalizeStoredPath(project, it.file.absolutePath) }
-                .mapTo(mutableSetOf()) { it.lowercase() }
-        }
-        val expectedNamesByRepoId = runConfigFilesByRepoId.mapValues { (_, runConfigFiles) ->
-            runConfigFiles.mapTo(mutableSetOf()) { it.name.lowercase() }
-        }
+        val expectedStoredPathsByRepoId = runConfigFilesByRepoId
+            .mapKeys { (repoId, _) -> repoId.lowercase() }
+            .mapValues { (_, runConfigFiles) ->
+                runConfigFiles
+                    .mapNotNull { normalizeStoredPath(project, it.file.absolutePath) }
+                    .mapTo(mutableSetOf()) { it.lowercase() }
+            }
+        val expectedNamesByRepoId = runConfigFilesByRepoId
+            .mapKeys { (repoId, _) -> repoId.lowercase() }
+            .mapValues { (_, runConfigFiles) ->
+                runConfigFiles.mapTo(mutableSetOf()) { it.name.lowercase() }
+            }
         val removed = pruneStaleImportedConfigs(
             project = project,
             acceptedRepoIds = acceptedRepoIds,
@@ -212,7 +216,7 @@ object RepoRunConfigurationSynchronizer {
         }
 
         for (settings in matching) {
-            runManager.removeConfiguration(settings)
+            removeConfigurationPreservingRepoFile(runManager, settings, project)
         }
 
         val imported = runManagerImpl.loadConfiguration(runConfigFile.element, false)
@@ -253,9 +257,28 @@ object RepoRunConfigurationSynchronizer {
         }
 
         for (settings in staleSettings) {
-            runManager.removeConfiguration(settings)
+            removeConfigurationPreservingRepoFile(runManager, settings, project)
         }
         return staleSettings.size
+    }
+
+    private fun removeConfigurationPreservingRepoFile(
+        runManager: RunManager,
+        settings: RunnerAndConfigurationSettings,
+        project: Project
+    ) {
+        val storedPath = normalizeStoredPath(project, settings.pathIfStoredInArbitraryFileInProject)
+        val sourceFile = storedPath
+            ?.takeIf { it.contains("/.run/") && it.endsWith(".run.xml") }
+            ?.let(::File)
+        val originalBytes = sourceFile?.takeIf { it.isFile }?.readBytes()
+
+        runManager.removeConfiguration(settings)
+
+        if (sourceFile != null && originalBytes != null && !sourceFile.isFile) {
+            sourceFile.parentFile?.mkdirs()
+            sourceFile.writeBytes(originalBytes)
+        }
     }
 
     private fun repoIdFromQualifiedName(name: String): String? {
