@@ -151,6 +151,7 @@ class JsonRpcHandler @JvmOverloads constructor(
         }
 
         val project = projectResult.project!!
+        val pathScopeRootPath = if (repoScope == null) projectResult.pathScopeRootPath else null
 
         // Record command in history
         val commandEntry = CommandEntry(
@@ -163,7 +164,10 @@ class JsonRpcHandler @JvmOverloads constructor(
         val startTime = System.currentTimeMillis()
 
         return try {
-            val result = withContext(RepoScopeContext.asContextElement(repoScope)) {
+            val result = withContext(
+                RepoScopeContext.asContextElement(repoScope) +
+                    PathScopeContext.asContextElement(pathScopeRootPath)
+            ) {
                 tool.execute(project, effectiveArguments)
             }
             val duration = System.currentTimeMillis() - startTime

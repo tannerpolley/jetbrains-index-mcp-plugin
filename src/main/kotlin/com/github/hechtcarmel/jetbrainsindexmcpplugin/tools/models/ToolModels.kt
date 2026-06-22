@@ -251,6 +251,13 @@ data class CodexWorkspaceModuleEntry(
 )
 
 @Serializable
+data class CodexWorkspaceLocalRootEntry(
+    val moduleName: String,
+    val rootPath: String,
+    val source: String
+)
+
+@Serializable
 data class CodexWorkspaceSkippedPath(
     val path: String,
     val source: String,
@@ -267,6 +274,9 @@ data class CodexWorkspaceSyncResult(
     val attached: List<CodexWorkspaceRepoEntry>,
     val toDetach: List<CodexWorkspaceRepoEntry> = emptyList(),
     val detached: List<CodexWorkspaceRepoEntry> = emptyList(),
+    val acceptedLocalContentRoots: List<CodexWorkspaceLocalRootEntry> = emptyList(),
+    val alreadyAttachedLocalContentRoots: List<CodexWorkspaceLocalRootEntry> = emptyList(),
+    val attachedLocalContentRoots: List<CodexWorkspaceLocalRootEntry> = emptyList(),
     val toDetachModules: List<CodexWorkspaceModuleEntry> = emptyList(),
     val detachedModules: List<CodexWorkspaceModuleEntry> = emptyList(),
     val runConfigurationsImported: Int = 0,

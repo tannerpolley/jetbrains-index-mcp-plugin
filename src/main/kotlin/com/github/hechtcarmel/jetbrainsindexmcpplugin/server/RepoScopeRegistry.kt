@@ -63,10 +63,22 @@ object RepoScopeRegistry {
             .filter { isGitRepoRoot(it) }
 
     fun isPathInsideScope(scope: RepoScope, path: String): Boolean {
+        return isPathInsideScope(scope.repoRootPath, path)
+    }
+
+    fun isPathInsideScope(scopeRootPath: String, path: String): Boolean {
         val normalizedPath = normalizeRepoRootPath(path)
-        val normalizedRoot = normalizeRepoRootPath(scope.repoRootPath)
+        val normalizedRoot = normalizeRepoRootPath(scopeRootPath)
+        if (isWindows()) {
+            return normalizedPath.equals(normalizedRoot, ignoreCase = true) ||
+                normalizedPath.startsWith("$normalizedRoot/", ignoreCase = true)
+        }
+
         return normalizedPath == normalizedRoot || normalizedPath.startsWith("$normalizedRoot/")
     }
+
+    private fun isWindows(): Boolean =
+        System.getProperty("os.name").contains("Windows", ignoreCase = true)
 
     fun collectOpenRepoScopes(): List<RepoScope> {
         if (ApplicationManager.getApplication() == null) {
@@ -87,6 +99,29 @@ object RepoScopeRegistry {
     fun collectProjectRepoScopes(project: Project): List<RepoScope> {
         val workspaceProjectPath = project.basePath?.let { normalizeRepoRootPath(it) }
         return buildScopes(collectRepoRootPaths(project), workspaceProjectPath)
+    }
+
+    fun collectProjectContentRootPaths(project: Project): List<String> {
+        if (ApplicationManager.getApplication() == null) {
+            return emptyList()
+        }
+
+        val roots = mutableListOf<String>()
+        try {
+            val modules = ModuleManager.getInstance(project).modules
+            for (module in modules) {
+                for (root in ModuleRootManager.getInstance(module).contentRoots) {
+                    roots += root.path
+                }
+            }
+        } catch (e: Exception) {
+            LOG.debug("Failed to collect content roots for project ${project.name}", e)
+        }
+
+        return roots
+            .map { normalizeRepoRootPath(it) }
+            .filter { it.isNotBlank() }
+            .distinct()
     }
 
     fun collectProjectWorkspaceModules(project: Project): List<WorkspaceModuleScope> {

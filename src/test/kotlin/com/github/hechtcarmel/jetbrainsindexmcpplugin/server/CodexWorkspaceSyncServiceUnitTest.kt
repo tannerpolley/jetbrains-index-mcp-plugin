@@ -410,6 +410,60 @@ class CodexWorkspaceSyncServiceUnitTest : TestCase() {
         assertTrue(plan.toDetachModules.isEmpty())
     }
 
+    fun testDiscoverAgentContentRootsReturnsCodexAndAgentsHomes() {
+        val userHome = Files.createTempDirectory("agent-home").toFile().also { tempDirs += it }
+
+        val roots = CodexWorkspaceSyncService.discoverAgentContentRoots(userHome)
+
+        assertEquals(
+            listOf(
+                File(userHome, ".codex").absolutePath,
+                File(userHome, ".agents").absolutePath
+            ),
+            roots.map { it.rootPath }
+        )
+        assertEquals(
+            listOf("agent-content-root:.codex", "agent-content-root:.agents"),
+            roots.map { it.source }
+        )
+    }
+
+    fun testBuildPlanTracksAgentContentRootsSeparatelyFromGitRepos() {
+        val workspace = createGitRepo("Workspace")
+        val repo = createGitRepo("accepted-repo")
+        val codexRoot = Files.createTempDirectory("codex-home").toFile().also { tempDirs += it }
+        val agentsRoot = Files.createTempDirectory("agents-home").toFile().also { tempDirs += it }
+
+        val plan = CodexWorkspaceSyncService.buildPlan(
+            candidates = listOf(CodexWorkspaceSyncService.Candidate(repo.absolutePath, "active-workspace-roots")),
+            existingRepoRoots = emptyList(),
+            workspaceProjectPath = workspace.absolutePath.replace('\\', '/'),
+            localContentRoots = listOf(
+                CodexWorkspaceSyncService.LocalContentRoot(codexRoot.absolutePath, "agent-content-root:.codex"),
+                CodexWorkspaceSyncService.LocalContentRoot(agentsRoot.absolutePath, "agent-content-root:.agents")
+            ),
+            existingContentRootPaths = listOf(codexRoot.absolutePath),
+            existingModules = listOf(
+                WorkspaceModuleScope(
+                    moduleName = ".codex",
+                    moduleFilePath = File(workspace, ".idea/.codex.iml").absolutePath.replace('\\', '/'),
+                    inferredRepoRootPath = null
+                )
+            ),
+            includeWorktrees = false
+        )
+
+        assertEquals(listOf(repo.absolutePath.replace('\\', '/')), plan.accepted.map { it.repoRootPath })
+        assertEquals(
+            listOf(codexRoot.absolutePath.replace('\\', '/'), agentsRoot.absolutePath.replace('\\', '/')),
+            plan.acceptedLocalContentRoots.map { it.rootPath }
+        )
+        assertEquals(listOf(codexRoot.absolutePath.replace('\\', '/')), plan.alreadyAttachedLocalContentRoots.map { it.rootPath })
+        assertEquals(listOf(agentsRoot.absolutePath.replace('\\', '/')), plan.toAttachLocalContentRoots.map { it.rootPath })
+        assertTrue(plan.toDetachModules.isEmpty())
+        assertTrue(plan.skipped.isEmpty())
+    }
+
     private fun createGitRepo(name: String): File {
         val parent = Files.createTempDirectory("codex-workspace-sync").toFile().also { tempDirs += it }
         val repo = File(parent, name).also { it.mkdirs() }

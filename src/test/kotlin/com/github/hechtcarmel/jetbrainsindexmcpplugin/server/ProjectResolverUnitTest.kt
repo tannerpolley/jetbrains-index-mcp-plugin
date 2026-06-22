@@ -91,6 +91,40 @@ class ProjectResolverUnitTest : TestCase() {
         assertEquals("Workspace", entries.single().workspace)
     }
 
+    fun testBuildAvailableProjectEntriesIncludesAgentRootsWithGitWorkspaceRoots() {
+        val entries = buildAvailableProjectEntriesForProject(
+            projectName = "Workspace",
+            projectBasePath = "C:/Users/Tanner/Documents/Workspaces/Workspace",
+            contentRoots = listOf(
+                ModuleContentRootEntry(
+                    moduleName = "ePC-SAFT",
+                    path = "C:/Users/Tanner/Documents/Workspaces/Engineering/ePC-SAFT"
+                ),
+                ModuleContentRootEntry(
+                    moduleName = "epcsaft",
+                    path = "C:/Users/Tanner/Documents/Workspaces/Engineering/ePC-SAFT/packages/epcsaft"
+                ),
+                ModuleContentRootEntry(
+                    moduleName = ".codex",
+                    path = "C:/Users/Tanner/.codex"
+                ),
+                ModuleContentRootEntry(
+                    moduleName = ".agents",
+                    path = "C:/Users/Tanner/.agents"
+                )
+            ),
+            includeWorkspaceSubProjects = true
+        ) { path ->
+            path == "C:/Users/Tanner/Documents/Workspaces/Engineering/ePC-SAFT"
+        }
+
+        assertEquals(
+            listOf("ePC-SAFT", ".codex", ".agents"),
+            entries.map { it.name }
+        )
+        assertFalse(entries.any { it.path.endsWith("/packages/epcsaft") })
+    }
+
     fun testBuildAvailableProjectEntriesKeepsNormalProjectWhenNoGitWorkspaceRootsExist() {
         val entries = buildAvailableProjectEntriesForProject(
             projectName = "plain-workspace",

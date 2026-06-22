@@ -182,6 +182,7 @@ class ToolsUnitTest : TestCase() {
         assertNotNull("Should have dryRun property", properties?.get("dryRun"))
         assertNotNull("Should have codex_state_path property", properties?.get("codex_state_path"))
         assertNotNull("Should have includeWorktrees property", properties?.get("includeWorktrees"))
+        assertNotNull("Should have includeAgentContentRoots property", properties?.get("includeAgentContentRoots"))
         assertNotNull("Should have installCodexMcp property", properties?.get("installCodexMcp"))
         assertNull("Should not have required array", schema[SchemaConstants.REQUIRED])
     }

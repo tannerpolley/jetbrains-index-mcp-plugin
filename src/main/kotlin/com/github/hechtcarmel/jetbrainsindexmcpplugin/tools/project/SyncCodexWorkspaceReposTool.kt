@@ -20,9 +20,9 @@ class SyncCodexWorkspaceReposTool : AbstractMcpTool() {
     override val name = ToolNames.SYNC_CODEX_WORKSPACE_REPOS
 
     override val description = """
-        Discover open Codex workspace roots from Codex desktop state, include Codex-requested Git worktrees, attach accepted Git repo roots to the current IntelliJ Workspace project, detach stale Workspace repo roots that are no longer accepted, prune stale Workspace VCS mappings, and synchronize accepted repo .run configurations into Services.
+        Discover open Codex workspace roots from Codex desktop state, include Codex-requested Git worktrees and agent config content roots, attach accepted roots to the current IntelliJ Workspace project, detach stale Workspace repo roots that are no longer accepted, prune stale Workspace VCS mappings, and synchronize accepted repo .run configurations into Services.
 
-        Parameters: dryRun (optional, default false), codex_state_path (optional), includeWorktrees (optional, default true), installCodexMcp (optional, default false), githubOwner (optional), project_path (optional workspace project path).
+        Parameters: dryRun (optional, default false), codex_state_path (optional), includeWorktrees (optional, default true), includeAgentContentRoots (optional, default true), installCodexMcp (optional, default false), githubOwner (optional), project_path (optional workspace project path).
     """.trimIndent()
 
     override val inputSchema: JsonObject = SchemaBuilder.tool()
@@ -30,6 +30,7 @@ class SyncCodexWorkspaceReposTool : AbstractMcpTool() {
         .booleanProperty("dryRun", "Preview the Codex repo reconciliation without attaching or detaching repos. Default: false.")
         .stringProperty("codex_state_path", "Absolute path to the Codex global state JSON file. Defaults to the current user's Codex state.")
         .booleanProperty("includeWorktrees", "Include Git worktrees only when their paths also appear in Codex state. Default: true.")
+        .booleanProperty("includeAgentContentRoots", "Attach the current user's .codex and .agents directories as non-repo Workspace content roots. Default: true.")
         .booleanProperty("installCodexMcp", "Install generated Codex MCP registrations after repo sync. In dryRun mode, only returns commands. Default: false.")
         .stringProperty("githubOwner", "GitHub username allowed for repos with GitHub remotes. Remote-less Git repos and trusted owners are accepted. Defaults to plugin settings.")
         .build()
@@ -39,7 +40,8 @@ class SyncCodexWorkspaceReposTool : AbstractMcpTool() {
             dryRun = arguments["dryRun"]?.jsonPrimitive?.booleanOrNull ?: false,
             codexStatePath = optionalStringArg(arguments, "codex_state_path"),
             includeWorktrees = arguments["includeWorktrees"]?.jsonPrimitive?.booleanOrNull ?: true,
-            githubOwner = optionalStringArg(arguments, "githubOwner")
+            githubOwner = optionalStringArg(arguments, "githubOwner"),
+            includeAgentContentRoots = arguments["includeAgentContentRoots"]?.jsonPrimitive?.booleanOrNull ?: true
         )
         val installCodexMcp = arguments["installCodexMcp"]?.jsonPrimitive?.booleanOrNull ?: false
 

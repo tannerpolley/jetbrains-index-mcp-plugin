@@ -21,7 +21,7 @@ import java.awt.Container
 
 class SyncCodexWorkspaceReposAction : AnAction(
     "Sync Codex Repos",
-    "Refresh Codex-active GitHub-owner-approved repos in the master Workspace",
+    "Refresh Codex-active and local Workspace repos in the master Workspace",
     AllIcons.Actions.Refresh
 ) {
     override fun actionPerformed(e: AnActionEvent) {
@@ -76,7 +76,7 @@ class SyncCodexWorkspaceReposAction : AnAction(
                     project,
                     NotificationType.INFORMATION,
                     "Codex Workspace Sync",
-                    "${syncResult.message} Accepted=${syncResult.accepted.size}, attached=${syncResult.attached.size}, detached=${syncResult.detached.size}, detachedModules=${syncResult.detachedModules.size}, runConfigsImported=${syncResult.runConfigurationsImported}, runConfigsRemoved=${syncResult.runConfigurationsRemoved}, skipped=${syncResult.skipped.size}.$registrationMessage"
+                    "${syncResult.message} Accepted=${syncResult.accepted.size}, attached=${syncResult.attached.size}, localRootsAttached=${syncResult.attachedLocalContentRoots.size}, detached=${syncResult.detached.size}, detachedModules=${syncResult.detachedModules.size}, runConfigsImported=${syncResult.runConfigurationsImported}, runConfigsRemoved=${syncResult.runConfigurationsRemoved}, skipped=${syncResult.skipped.size}.$registrationMessage"
                 )
                 refreshToolWindow(project)
             } catch (ex: Exception) {

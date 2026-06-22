@@ -1,5 +1,8 @@
 package com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers
 
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.PathScopeContext
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.RepoScopeContext
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.RepoScopeRegistry
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.search.DelegatingGlobalSearchScope
@@ -15,12 +18,19 @@ import com.intellij.psi.search.GlobalSearchScope
  */
 class ExcludedPathScope(
     baseScope: GlobalSearchScope,
-    private val basePath: String,
+    basePath: String,
+    private val enforceBasePath: Boolean = false,
 ) : DelegatingGlobalSearchScope(baseScope) {
+    private val normalizedBasePath = RepoScopeRegistry.normalizeRepoRootPath(basePath)
 
     override fun contains(file: VirtualFile): Boolean {
         if (!super.contains(file)) return false
-        val relativePath = file.path.removePrefix(basePath).removePrefix("/")
+        if (enforceBasePath && normalizedBasePath.isNotBlank() && !RepoScopeRegistry.isPathInsideScope(normalizedBasePath, file.path)) {
+            return false
+        }
+        val relativePath = RepoScopeRegistry.normalizeRepoRootPath(file.path)
+            .removePrefix(normalizedBasePath)
+            .removePrefix("/")
         return !isExcludedPath(relativePath)
     }
 }
@@ -31,11 +41,13 @@ class ExcludedPathScope(
  * never processed by IntelliJ's search APIs.
  */
 fun createFilteredScope(project: Project, includeLibraries: Boolean = false): GlobalSearchScope {
-    val basePath = project.basePath ?: ""
+    val explicitScopeRoot = RepoScopeContext.current()?.repoRootPath
+        ?: PathScopeContext.currentRootPath()
+    val basePath = explicitScopeRoot ?: project.basePath ?: ""
     val baseScope = if (includeLibraries) {
         GlobalSearchScope.allScope(project)
     } else {
         GlobalSearchScope.projectScope(project)
     }
-    return ExcludedPathScope(baseScope, basePath)
+    return ExcludedPathScope(baseScope, basePath, enforceBasePath = explicitScopeRoot != null)
 }

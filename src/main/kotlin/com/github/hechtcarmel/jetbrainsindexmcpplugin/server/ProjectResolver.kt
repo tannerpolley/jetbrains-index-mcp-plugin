@@ -24,6 +24,12 @@ internal data class ModuleContentRootEntry(
     val path: String
 )
 
+internal fun isAgentContentRootPath(path: String): Boolean {
+    val leaf = ProjectResolver.normalizePath(path)
+        .substringAfterLast('/')
+    return leaf == ".codex" || leaf == ".agents"
+}
+
 internal fun buildAvailableProjectEntriesForProject(
     projectName: String,
     projectBasePath: String?,
@@ -57,7 +63,7 @@ internal fun buildAvailableProjectEntriesForProject(
 
     for (root in normalizedContentRoots) {
         val repoId = repoIdsByRoot[root.path]
-        if (hasGitWorkspaceRoots && repoId == null) {
+        if (hasGitWorkspaceRoots && repoId == null && !isAgentContentRootPath(root.path)) {
             continue
         }
 
@@ -128,6 +134,7 @@ object ProjectResolver {
 
     data class Result(
         val project: Project? = null,
+        val pathScopeRootPath: String? = null,
         val errorResult: ToolCallResult? = null,
         val isError: Boolean = false
     )
@@ -163,7 +170,10 @@ object ProjectResolver {
             // 2. Match against module content roots (workspace support)
             val moduleMatch = findProjectByModuleContentRoot(openProjects, normalizedPath)
             if (moduleMatch != null) {
-                return Result(project = moduleMatch)
+                return Result(
+                    project = moduleMatch.project,
+                    pathScopeRootPath = moduleMatch.pathScopeRootPath
+                )
             }
 
             // 3. Match if the given path is a subdirectory of an open project
@@ -212,15 +222,24 @@ object ProjectResolver {
      * This supports workspace projects where sub-projects are represented as modules
      * with content roots in different directories.
      */
-    private fun findProjectByModuleContentRoot(projects: List<Project>, normalizedPath: String): Project? {
+    private data class ProjectContentRootMatch(
+        val project: Project,
+        val pathScopeRootPath: String
+    )
+
+    private fun findProjectByModuleContentRoot(projects: List<Project>, normalizedPath: String): ProjectContentRootMatch? {
         for (project in projects) {
             try {
                 val modules = ModuleManager.getInstance(project).modules
                 for (module in modules) {
                     val contentRoots = ModuleRootManager.getInstance(module).contentRoots
                     for (root in contentRoots) {
-                        if (normalizePath(root.path) == normalizedPath) {
-                            return project
+                        val rootPath = normalizePath(root.path)
+                        if (normalizedPath == rootPath || normalizedPath.startsWith("$rootPath/")) {
+                            return ProjectContentRootMatch(
+                                project = project,
+                                pathScopeRootPath = normalizedPath
+                            )
                         }
                     }
                 }

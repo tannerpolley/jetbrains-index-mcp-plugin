@@ -1,6 +1,7 @@
 package com.github.hechtcarmel.jetbrainsindexmcpplugin.server
 
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.models.CodexWorkspaceModuleEntry
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.models.CodexWorkspaceLocalRootEntry
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.models.CodexWorkspaceRepoEntry
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.models.CodexWorkspaceSkippedPath
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.models.CodexWorkspaceSyncResult
@@ -31,7 +32,8 @@ object CodexWorkspaceSyncService {
         val dryRun: Boolean = false,
         val codexStatePath: String? = null,
         val includeWorktrees: Boolean = true,
-        val githubOwner: String? = null
+        val githubOwner: String? = null,
+        val includeAgentContentRoots: Boolean = true
     )
 
     data class Candidate(
@@ -44,6 +46,17 @@ object CodexWorkspaceSyncService {
         val source: String
     )
 
+    data class LocalContentRoot(
+        val rootPath: String,
+        val source: String
+    )
+
+    data class ResolvedLocalContentRoot(
+        val rootPath: String,
+        val source: String,
+        val moduleName: String
+    )
+
     data class Plan(
         val discovered: Int,
         val accepted: List<ResolvedRepo>,
@@ -51,6 +64,9 @@ object CodexWorkspaceSyncService {
         val toAttach: List<ResolvedRepo>,
         val toDetach: List<RepoScope>,
         val toDetachModules: List<WorkspaceModuleScope>,
+        val acceptedLocalContentRoots: List<ResolvedLocalContentRoot>,
+        val alreadyAttachedLocalContentRoots: List<ResolvedLocalContentRoot>,
+        val toAttachLocalContentRoots: List<ResolvedLocalContentRoot>,
         val skipped: List<CodexWorkspaceSkippedPath>
     )
 
@@ -60,6 +76,7 @@ object CodexWorkspaceSyncService {
         val discoverySkipped: List<CodexWorkspaceSkippedPath>,
         val plan: Plan,
         val existingRepoRoots: List<String>,
+        val existingContentRootPaths: List<String>,
         val existingModules: List<WorkspaceModuleScope>,
         val workspaceProjectPath: String?
     )
@@ -82,14 +99,20 @@ object CodexWorkspaceSyncService {
             ?.let(::File)
             ?: defaultCodexStateFile()
 
-        val discovery = readStateCandidates(stateFile)
+        val discovery = readStateCandidates(
+            stateFile = stateFile,
+            includeAgentContentRoots = options.includeAgentContentRoots
+        )
         val existingRepoRoots = RepoScopeRegistry.collectProjectRepoScopes(project).map { it.repoRootPath }
+        val existingContentRootPaths = RepoScopeRegistry.collectProjectContentRootPaths(project)
         val existingModules = RepoScopeRegistry.collectProjectWorkspaceModules(project)
         val workspaceProjectPath = project.basePath?.let { RepoScopeRegistry.normalizeRepoRootPath(it) }
         val githubOwner = options.githubOwner ?: McpSettings.getInstance().codexWorkspaceGitHubOwner
         val plan = buildPlan(
             candidates = discovery.candidates,
+            localContentRoots = discovery.localContentRoots,
             existingRepoRoots = existingRepoRoots,
+            existingContentRootPaths = existingContentRootPaths,
             existingModules = existingModules,
             workspaceProjectPath = workspaceProjectPath,
             includeWorktrees = options.includeWorktrees,
@@ -103,6 +126,7 @@ object CodexWorkspaceSyncService {
             discoverySkipped = discovery.skipped,
             plan = plan,
             existingRepoRoots = existingRepoRoots,
+            existingContentRootPaths = existingContentRootPaths,
             existingModules = existingModules,
             workspaceProjectPath = workspaceProjectPath
         )
@@ -119,6 +143,7 @@ object CodexWorkspaceSyncService {
 
     fun applyPrepared(project: Project, prepared: PreparedSync): CodexWorkspaceSyncResult {
         val attached = mutableListOf<ResolvedRepo>()
+        val attachedLocalContentRoots = mutableListOf<ResolvedLocalContentRoot>()
         val detached = mutableListOf<RepoScope>()
         val detachedModules = mutableListOf<WorkspaceModuleScope>()
         val errors = mutableListOf<CodexWorkspaceSkippedPath>()
@@ -172,6 +197,22 @@ object CodexWorkspaceSyncService {
             }
         }
 
+        for (root in prepared.plan.toAttachLocalContentRoots) {
+            try {
+                RepoWorkspaceMutator.attachLocalContentRoot(project, root.rootPath, root.moduleName)
+                attachedLocalContentRoots.add(root)
+            } catch (e: Exception) {
+                LOG.warn("Failed to attach local content root ${root.rootPath}", e)
+                errors.add(
+                    CodexWorkspaceSkippedPath(
+                        path = root.rootPath,
+                        source = root.source,
+                        reason = "attach_local_content_root_failed: ${e.message ?: e.javaClass.simpleName}"
+                    )
+                )
+            }
+        }
+
         try {
             runConfigSync = RepoRunConfigurationSynchronizer.sync(
                 project = project,
@@ -208,6 +249,7 @@ object CodexWorkspaceSyncService {
 
         if (
             attached.isNotEmpty() ||
+            attachedLocalContentRoots.isNotEmpty() ||
             detached.isNotEmpty() ||
             detachedModules.isNotEmpty() ||
             runConfigSync.imported > 0 ||
@@ -218,12 +260,13 @@ object CodexWorkspaceSyncService {
             McpServerService.getInstance().notifyEndpointListChanged()
         }
 
-        return buildResult(prepared, attached, detached, detachedModules, errors, runConfigSync, vcsMappingSync)
+        return buildResult(prepared, attached, attachedLocalContentRoots, detached, detachedModules, errors, runConfigSync, vcsMappingSync)
     }
 
     fun persistAppliedChanges(project: Project, result: CodexWorkspaceSyncResult) {
         if (
             result.attached.isNotEmpty() ||
+            result.attachedLocalContentRoots.isNotEmpty() ||
             result.detached.isNotEmpty() ||
             result.detachedModules.isNotEmpty() ||
             result.runConfigurationsImported > 0 ||
@@ -238,6 +281,7 @@ object CodexWorkspaceSyncService {
     fun buildResult(
         prepared: PreparedSync,
         attached: List<ResolvedRepo>,
+        attachedLocalContentRoots: List<ResolvedLocalContentRoot> = emptyList(),
         detached: List<RepoScope>,
         detachedModules: List<WorkspaceModuleScope>,
         errors: List<CodexWorkspaceSkippedPath>,
@@ -261,18 +305,21 @@ object CodexWorkspaceSyncService {
         val acceptedEntries = buildEntries(plan.accepted, finalRepoRoots, prepared.workspaceProjectPath)
         val toDetachEntries = buildEntries(plan.toDetach) { "stale-workspace-root:${it.repoId}" }
         val detachedEntries = buildEntries(detached) { "stale-workspace-root:${it.repoId}" }
+        val acceptedLocalRootEntries = buildLocalRootEntries(plan.acceptedLocalContentRoots)
+        val alreadyAttachedLocalRootEntries = buildLocalRootEntries(plan.alreadyAttachedLocalContentRoots)
+        val attachedLocalRootEntries = buildLocalRootEntries(attachedLocalContentRoots)
         val toDetachModuleEntries = buildModuleEntries(plan.toDetachModules)
         val detachedModuleEntries = buildModuleEntries(detachedModules)
 
         val message = when {
-            prepared.discoverySkipped.isNotEmpty() && plan.discovered == 0 ->
+            prepared.discoverySkipped.isNotEmpty() && plan.discovered == 0 && plan.acceptedLocalContentRoots.isEmpty() ->
                 "Codex workspace sync found no repo candidates."
             prepared.options.dryRun ->
-                "Codex workspace sync dry-run found ${plan.toAttach.size} repo(s) to attach, ${plan.toDetach.size} repo root(s) to detach, and ${plan.toDetachModules.size} module(s) to detach."
+                "Codex workspace sync dry-run found ${plan.toAttach.size} repo(s) to attach, ${plan.toAttachLocalContentRoots.size} local content root(s) to attach, ${plan.toDetach.size} repo root(s) to detach, and ${plan.toDetachModules.size} module(s) to detach."
             errors.isNotEmpty() ->
-                "Codex workspace sync attached ${attached.size} repo(s), detached ${detached.size} repo root(s), detached ${detachedModules.size} module(s), imported ${runConfigSync.imported} run config(s), removed ${runConfigSync.removed} run config(s), added ${vcsMappingSync.added} VCS mapping(s), removed ${vcsMappingSync.removed} VCS mapping(s), and reported ${errors.size} error(s)."
-            attached.isNotEmpty() || detached.isNotEmpty() || detachedModules.isNotEmpty() || runConfigSync.imported > 0 || runConfigSync.removed > 0 || vcsMappingSync.added > 0 || vcsMappingSync.removed > 0 ->
-                "Codex workspace sync attached ${attached.size} repo(s), detached ${detached.size} repo root(s), detached ${detachedModules.size} module(s), imported ${runConfigSync.imported} run config(s), removed ${runConfigSync.removed} run config(s), added ${vcsMappingSync.added} VCS mapping(s), and removed ${vcsMappingSync.removed} VCS mapping(s)."
+                "Codex workspace sync attached ${attached.size} repo(s), attached ${attachedLocalContentRoots.size} local content root(s), detached ${detached.size} repo root(s), detached ${detachedModules.size} module(s), imported ${runConfigSync.imported} run config(s), removed ${runConfigSync.removed} run config(s), added ${vcsMappingSync.added} VCS mapping(s), removed ${vcsMappingSync.removed} VCS mapping(s), and reported ${errors.size} error(s)."
+            attached.isNotEmpty() || attachedLocalContentRoots.isNotEmpty() || detached.isNotEmpty() || detachedModules.isNotEmpty() || runConfigSync.imported > 0 || runConfigSync.removed > 0 || vcsMappingSync.added > 0 || vcsMappingSync.removed > 0 ->
+                "Codex workspace sync attached ${attached.size} repo(s), attached ${attachedLocalContentRoots.size} local content root(s), detached ${detached.size} repo root(s), detached ${detachedModules.size} module(s), imported ${runConfigSync.imported} run config(s), removed ${runConfigSync.removed} run config(s), added ${vcsMappingSync.added} VCS mapping(s), and removed ${vcsMappingSync.removed} VCS mapping(s)."
             else ->
                 "Codex workspace sync found no workspace repo changes."
         }
@@ -286,6 +333,9 @@ object CodexWorkspaceSyncService {
             attached = attachedEntries,
             toDetach = toDetachEntries,
             detached = detachedEntries,
+            acceptedLocalContentRoots = acceptedLocalRootEntries,
+            alreadyAttachedLocalContentRoots = alreadyAttachedLocalRootEntries,
+            attachedLocalContentRoots = attachedLocalRootEntries,
             toDetachModules = toDetachModuleEntries,
             detachedModules = detachedModuleEntries,
             runConfigurationsImported = runConfigSync.imported,
@@ -302,6 +352,8 @@ object CodexWorkspaceSyncService {
         candidates: List<Candidate>,
         existingRepoRoots: Collection<String>,
         workspaceProjectPath: String?,
+        localContentRoots: List<LocalContentRoot> = emptyList(),
+        existingContentRootPaths: Collection<String> = existingRepoRoots,
         existingModules: List<WorkspaceModuleScope> = emptyList(),
         includeWorktrees: Boolean = true,
         resolveGitRoot: (String) -> String? = ::resolveGitRootPath,
@@ -406,11 +458,24 @@ object CodexWorkspaceSyncService {
         }.filterNot { repo ->
             workspaceProjectPath != null && RepoScopeRegistry.normalizeRepoRootPath(repo.repoRootPath) == workspaceProjectPath
         }
+        val acceptedRepoRootPaths = accepted.mapTo(mutableSetOf()) {
+            RepoScopeRegistry.normalizeRepoRootPath(it.repoRootPath)
+        }
+        val acceptedLocalContentRoots = resolveLocalContentRoots(
+            localContentRoots = localContentRoots,
+            workspaceProjectPath = workspaceProjectPath,
+            acceptedRepoRootPaths = acceptedRepoRootPaths,
+            skipped = skipped
+        )
+        val existingContentRoots = existingContentRootPaths
+            .mapTo(mutableSetOf()) { RepoScopeRegistry.normalizeRepoRootPath(it) }
+        val alreadyAttachedLocalContentRoots = acceptedLocalContentRoots.filter { it.rootPath in existingContentRoots }
+        val toAttachLocalContentRoots = acceptedLocalContentRoots.filterNot { it.rootPath in existingContentRoots }
 
         val existing = existingRepoRoots.map { RepoScopeRegistry.normalizeRepoRootPath(it) }.toSet()
         val alreadyAttached = accepted.filter { it.repoRootPath in existing }
         val toAttach = accepted.filterNot { it.repoRootPath in existing }
-        val acceptedRoots = accepted.mapTo(mutableSetOf()) { RepoScopeRegistry.normalizeRepoRootPath(it.repoRootPath) }
+        val acceptedRoots = acceptedRepoRootPaths
         val normalizedWorkspaceProjectPath = workspaceProjectPath?.let { RepoScopeRegistry.normalizeRepoRootPath(it) }
         val toDetach = if (pruneStaleAttached) {
             RepoScopeRegistry.buildScopes(existingRepoRoots.toList(), workspaceProjectPath)
@@ -423,12 +488,15 @@ object CodexWorkspaceSyncService {
         }
         val acceptedRepoIds = RepoScopeRegistry.buildScopes(acceptedRoots.toList(), workspaceProjectPath)
             .mapTo(mutableSetOf()) { it.repoId }
+        val acceptedLocalContentRootModuleNames = acceptedLocalContentRoots
+            .mapTo(mutableSetOf()) { it.moduleName }
         val toDetachModules = if (pruneStaleAttached) {
             existingModules
                 .filter { module ->
                     shouldDetachWorkspaceModule(
                         module = module,
                         acceptedRepoIds = acceptedRepoIds,
+                        acceptedLocalContentRootModuleNames = acceptedLocalContentRootModuleNames,
                         acceptedRoots = acceptedRoots,
                         workspaceProjectPath = normalizedWorkspaceProjectPath
                     )
@@ -445,13 +513,66 @@ object CodexWorkspaceSyncService {
             toAttach = toAttach,
             toDetach = toDetach,
             toDetachModules = toDetachModules,
+            acceptedLocalContentRoots = acceptedLocalContentRoots,
+            alreadyAttachedLocalContentRoots = alreadyAttachedLocalContentRoots,
+            toAttachLocalContentRoots = toAttachLocalContentRoots,
             skipped = skipped
         )
     }
 
+    private fun resolveLocalContentRoots(
+        localContentRoots: List<LocalContentRoot>,
+        workspaceProjectPath: String?,
+        acceptedRepoRootPaths: Set<String>,
+        skipped: MutableList<CodexWorkspaceSkippedPath>
+    ): List<ResolvedLocalContentRoot> {
+        val normalizedWorkspaceProjectPath = workspaceProjectPath?.let { RepoScopeRegistry.normalizeRepoRootPath(it) }
+        val sourcesByRoot = linkedMapOf<String, MutableSet<String>>()
+
+        for (root in localContentRoots) {
+            val normalizedRootPath = RepoScopeRegistry.normalizeRepoRootPath(File(root.rootPath).absolutePath)
+            if (normalizedRootPath.isBlank()) {
+                continue
+            }
+            val rootFile = File(normalizedRootPath)
+            when {
+                !rootFile.exists() -> {
+                    skipped.add(CodexWorkspaceSkippedPath(root.rootPath, root.source, "local_content_root_missing"))
+                    continue
+                }
+                !rootFile.isDirectory -> {
+                    skipped.add(CodexWorkspaceSkippedPath(root.rootPath, root.source, "local_content_root_not_directory"))
+                    continue
+                }
+                normalizedRootPath == normalizedWorkspaceProjectPath -> continue
+                normalizedRootPath in acceptedRepoRootPaths -> continue
+            }
+
+            sourcesByRoot.getOrPut(normalizedRootPath) { linkedSetOf() }.add(root.source)
+        }
+
+        val moduleNamesByRoot = RepoScopeRegistry.buildScopes(sourcesByRoot.keys.toList(), workspaceProjectPath)
+            .associate { it.repoRootPath to it.repoId }
+
+        return sourcesByRoot.map { (rootPath, sources) ->
+            ResolvedLocalContentRoot(
+                rootPath = rootPath,
+                source = sources.sorted().joinToString(","),
+                moduleName = agentContentRootModuleName(sources) ?: moduleNamesByRoot[rootPath] ?: File(rootPath).name
+            )
+        }
+    }
+
+    private fun agentContentRootModuleName(sources: Set<String>): String? =
+        sources.asSequence()
+            .filter { it.startsWith("agent-content-root:") }
+            .map { it.substringAfter("agent-content-root:").trim() }
+            .firstOrNull { it.isNotBlank() }
+
     private fun shouldDetachWorkspaceModule(
         module: WorkspaceModuleScope,
         acceptedRepoIds: Set<String>,
+        acceptedLocalContentRootModuleNames: Set<String>,
         acceptedRoots: Set<String>,
         workspaceProjectPath: String?
     ): Boolean {
@@ -463,6 +584,9 @@ object CodexWorkspaceSyncService {
             return false
         }
         if (module.moduleName in acceptedRepoIds) {
+            return false
+        }
+        if (module.moduleName in acceptedLocalContentRootModuleNames) {
             return false
         }
 
@@ -627,36 +751,76 @@ object CodexWorkspaceSyncService {
 
     private data class Discovery(
         val candidates: List<Candidate>,
+        val localContentRoots: List<LocalContentRoot>,
         val skipped: List<CodexWorkspaceSkippedPath>
     )
 
-    private fun readStateCandidates(stateFile: File): Discovery {
-        if (!stateFile.exists()) {
-            return Discovery(
-                candidates = emptyList(),
-                skipped = listOf(CodexWorkspaceSkippedPath(stateFile.absolutePath, "codex-state", "codex_state_file_missing"))
-            )
-        }
+    private fun readStateCandidates(
+        stateFile: File,
+        includeAgentContentRoots: Boolean
+    ): Discovery {
+        val candidates = mutableListOf<Candidate>()
+        val skipped = mutableListOf<CodexWorkspaceSkippedPath>()
 
-        return try {
-            Discovery(
-                extractCandidatesFromStateText(
+        if (!stateFile.exists()) {
+            skipped.add(
+                CodexWorkspaceSkippedPath(stateFile.absolutePath, "codex-state", "codex_state_file_missing")
+            )
+        } else {
+            try {
+                candidates += extractCandidatesFromStateText(
                     text = stateFile.readText(),
                     nonArchivedThreadIds = readNonArchivedThreadIds(stateFile.parentFile ?: defaultCodexHome())
-                ),
-                emptyList()
-            )
-        } catch (e: Exception) {
-            Discovery(
-                candidates = emptyList(),
-                skipped = listOf(
+                )
+            } catch (e: Exception) {
+                skipped.add(
                     CodexWorkspaceSkippedPath(
                         stateFile.absolutePath,
                         "codex-state",
                         "codex_state_json_error: ${e.message ?: e.javaClass.simpleName}"
                     )
                 )
-            )
+            }
+        }
+
+        val localContentRoots = if (includeAgentContentRoots) {
+            discoverAgentContentRoots()
+        } else {
+            emptyList()
+        }
+
+        return Discovery(
+            candidates = mergeCandidates(candidates),
+            localContentRoots = mergeLocalContentRoots(localContentRoots),
+            skipped = skipped
+        )
+    }
+
+    fun discoverAgentContentRoots(userHome: File = File(System.getProperty("user.home"))): List<LocalContentRoot> =
+        listOf(".codex", ".agents")
+            .map { name -> LocalContentRoot(File(userHome, name).absolutePath, "agent-content-root:$name") }
+
+    private fun mergeCandidates(candidates: List<Candidate>): List<Candidate> {
+        val sourcesByPath = linkedMapOf<String, MutableSet<String>>()
+        for (candidate in candidates) {
+            val path = candidate.path.trim()
+            if (path.isBlank()) continue
+            sourcesByPath.getOrPut(path) { linkedSetOf() }.add(candidate.source)
+        }
+        return sourcesByPath.map { (path, sources) ->
+            Candidate(path, sources.sorted().joinToString(","))
+        }
+    }
+
+    private fun mergeLocalContentRoots(roots: List<LocalContentRoot>): List<LocalContentRoot> {
+        val sourcesByPath = linkedMapOf<String, MutableSet<String>>()
+        for (root in roots) {
+            val path = root.rootPath.trim()
+            if (path.isBlank()) continue
+            sourcesByPath.getOrPut(path) { linkedSetOf() }.add(root.source)
+        }
+        return sourcesByPath.map { (path, sources) ->
+            LocalContentRoot(path, sources.sorted().joinToString(","))
         }
     }
 
@@ -728,6 +892,15 @@ object CodexWorkspaceSyncService {
                     broadStreamableHttpUrl = ClientConfigGenerator.getStreamableHttpUrl(),
                     repoId = scope.repoId
                 )
+            )
+        }
+
+    private fun buildLocalRootEntries(roots: List<ResolvedLocalContentRoot>): List<CodexWorkspaceLocalRootEntry> =
+        roots.map { root ->
+            CodexWorkspaceLocalRootEntry(
+                moduleName = root.moduleName,
+                rootPath = root.rootPath,
+                source = root.source
             )
         }
 

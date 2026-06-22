@@ -57,6 +57,40 @@ object RepoWorkspaceMutator {
             ?: plannedScope
     }
 
+    fun attachLocalContentRoot(project: Project, rootPath: String, moduleName: String): WorkspaceModuleScope {
+        val normalizedRootPath = RepoScopeRegistry.normalizeRepoRootPath(rootPath)
+        val root = LocalFileSystem.getInstance().refreshAndFindFileByPath(normalizedRootPath)
+            ?: throw IllegalArgumentException("Content root path does not exist: $normalizedRootPath")
+        if (!root.isDirectory) {
+            throw IllegalArgumentException("Content root path must be a directory: $normalizedRootPath")
+        }
+
+        val targetModule = findOrCreateRepoModule(project, moduleName)
+        val alreadyAttachedToTargetModule = ModuleRootManager.getInstance(targetModule).contentEntries.any { entry ->
+            entry.file?.path?.let { RepoScopeRegistry.normalizeRepoRootPath(it) } == normalizedRootPath
+        }
+
+        if (!alreadyAttachedToTargetModule) {
+            val rootModel = ModuleRootManager.getInstance(targetModule).modifiableModel
+            var committed = false
+            try {
+                rootModel.addContentEntry(root)
+                rootModel.commit()
+                committed = true
+            } finally {
+                if (!committed) {
+                    rootModel.dispose()
+                }
+            }
+        }
+
+        return WorkspaceModuleScope(
+            moduleName = moduleName,
+            moduleFilePath = RepoScopeRegistry.normalizeRepoRootPath(targetModule.moduleFile?.path ?: targetModule.moduleFilePath),
+            inferredRepoRootPath = null
+        )
+    }
+
     fun detachContentRoot(project: Project, repoId: String): RepoScope {
         val scope = RepoScopeRegistry.resolveOpenRepoScope(repoId)
             ?: throw IllegalArgumentException("Repo id is not attached to the open workspace: $repoId")

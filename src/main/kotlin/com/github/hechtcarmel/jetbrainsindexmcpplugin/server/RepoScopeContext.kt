@@ -24,3 +24,12 @@ object RepoScopeContext {
     fun asContextElement(scope: RepoScope?): ThreadContextElement<RepoScope?> =
         currentScope.asContextElement(scope)
 }
+
+object PathScopeContext {
+    private val currentRootPath = ThreadLocal<String?>()
+
+    fun currentRootPath(): String? = currentRootPath.get()
+
+    fun asContextElement(rootPath: String?): ThreadContextElement<String?> =
+        currentRootPath.asContextElement(rootPath)
+}

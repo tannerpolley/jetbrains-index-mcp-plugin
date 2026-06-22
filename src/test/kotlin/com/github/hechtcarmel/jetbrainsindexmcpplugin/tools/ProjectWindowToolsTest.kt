@@ -10,6 +10,7 @@ import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import java.nio.file.Path
 
 class ProjectWindowToolsTest : BasePlatformTestCase() {
 
@@ -97,10 +98,11 @@ class ProjectWindowToolsTest : BasePlatformTestCase() {
     }
 
     fun testOpenProjectRejectsNonPositiveTimeout() = runBlocking {
+        val missingProjectPath = Path.of(System.getProperty("java.io.tmpdir"), "nonexistent", "project", "path").toString()
         val result = OpenProjectTool().execute(
             project,
             buildJsonObject {
-                put("path", "/nonexistent/project/path")
+                put("path", missingProjectPath)
                 put("timeoutSeconds", 0)
             }
         )
@@ -110,9 +112,10 @@ class ProjectWindowToolsTest : BasePlatformTestCase() {
     }
 
     fun testOpenProjectReturnsErrorForNonExistentPath() = runBlocking {
+        val missingProjectPath = Path.of(System.getProperty("java.io.tmpdir"), "nonexistent", "project", "path").toString()
         val result = OpenProjectTool().execute(
             project,
-            buildJsonObject { put("path", "/nonexistent/project/path") }
+            buildJsonObject { put("path", missingProjectPath) }
         )
 
         assertTrue(result.isError)
