@@ -7,7 +7,6 @@ import com.github.hechtcarmel.jetbrainsindexmcpplugin.actions.CopyServerUrlActio
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.actions.ExportHistoryAction
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.actions.InstallSkillAction
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.actions.RefreshAction
-import com.github.hechtcarmel.jetbrainsindexmcpplugin.actions.SyncCodexWorkspaceReposAction
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.settings.McpSettingsConfigurable
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.icons.McpIcons
 import com.intellij.icons.AllIcons
@@ -42,7 +41,6 @@ class McpToolWindowFactory : ToolWindowFactory, DumbAware {
         // Left toolbar actions (utility buttons) - settings icon moved to separate component with label
         val leftActionGroup = DefaultActionGroup().apply {
             add(RefreshAction())
-            add(SyncCodexWorkspaceReposAction())
             addSeparator()
             add(CopyServerUrlAction())
             addSeparator()
@@ -93,16 +91,6 @@ class McpToolWindowFactory : ToolWindowFactory, DumbAware {
             }
         }
 
-        val syncAction = SyncCodexWorkspaceReposAction()
-        val syncButton = JButton("Sync Codex Repos").apply {
-            icon = AllIcons.Actions.Refresh
-            toolTipText = "Refresh Codex-active GitHub-owner-approved repos in the master Workspace"
-            isFocusable = false
-            addActionListener {
-                syncAction.syncProject(project)
-            }
-        }
-
         // Right panel with external links + install button
         val rightPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.RIGHT, 4, 0)).apply {
             border = JBUI.Borders.empty(2, 4)
@@ -125,7 +113,6 @@ class McpToolWindowFactory : ToolWindowFactory, DumbAware {
                 "https://buymeacoffee.com/hechtcarmel"
             ))
             add(createToolbarSeparator())
-            add(syncButton)
             add(skillButton)
             add(installButton)
         }
@@ -156,7 +143,7 @@ class McpToolWindowFactory : ToolWindowFactory, DumbAware {
         toolWindow.contentManager.addContent(content)
 
         // Also add quick actions to title bar
-        toolWindow.setTitleActions(listOf(CopyServerUrlAction(), SyncCodexWorkspaceReposAction(), RefreshAction()))
+        toolWindow.setTitleActions(listOf(CopyServerUrlAction(), RefreshAction()))
     }
 
     override fun shouldBeAvailable(project: Project): Boolean = true

@@ -4,7 +4,6 @@ import com.github.hechtcarmel.jetbrainsindexmcpplugin.constants.ParamNames
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.constants.SchemaConstants
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.constants.ToolNames
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.BuiltInSearchScope
-import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.CodexWorkspaceSyncService
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.editor.GetActiveFileTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.editor.OpenFileTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.intelligence.GetDiagnosticsTool
@@ -20,12 +19,7 @@ import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.navigation.FindUsage
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.navigation.SearchTextTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.navigation.TypeHierarchyTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.GetIndexStatusTool
-import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.AttachRepoToWorkspaceTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.BuildProjectTool
-import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.DetachRepoFromWorkspaceTool
-import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.GetRepoScopedClientConfigTool
-import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.InstallRepoScopedCodexConfigTool
-import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.SyncCodexWorkspaceReposTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.SyncFilesTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.refactoring.MoveFileTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.refactoring.OptimizeImportsTool
@@ -39,11 +33,11 @@ import io.mockk.every
 import io.mockk.mockkObject
 import io.mockk.unmockkObject
 import junit.framework.TestCase
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import java.nio.file.Files
+import java.nio.file.Path
 
 class ToolsUnitTest : TestCase() {
     private fun assertHasScopeAndNoLegacyFilters(properties: kotlinx.serialization.json.JsonObject?) {
@@ -135,138 +129,35 @@ class ToolsUnitTest : TestCase() {
         assertEquals(ToolNames.BUILD_PROJECT, tool?.name)
     }
 
-    fun testAttachRepoToWorkspaceToolSchema() {
-        val tool = AttachRepoToWorkspaceTool()
-
-        assertEquals(ToolNames.ATTACH_REPO_TO_WORKSPACE, tool.name)
-        assertNotNull(tool.description)
-
-        val schema = tool.inputSchema
-        val properties = schema[SchemaConstants.PROPERTIES]?.jsonObject
-        assertNotNull("Should have project_path property", properties?.get(ParamNames.PROJECT_PATH))
-        assertNotNull("Should have repo_path property", properties?.get(ParamNames.REPO_PATH))
-        assertTrue("repo_path should be required", schema[SchemaConstants.REQUIRED].toString().contains(ParamNames.REPO_PATH))
-    }
-
-    fun testDetachRepoFromWorkspaceToolSchema() {
-        val tool = DetachRepoFromWorkspaceTool()
-
-        assertEquals(ToolNames.DETACH_REPO_FROM_WORKSPACE, tool.name)
-        assertNotNull(tool.description)
-
-        val schema = tool.inputSchema
-        val properties = schema[SchemaConstants.PROPERTIES]?.jsonObject
-        assertNotNull("Should have project_path property", properties?.get(ParamNames.PROJECT_PATH))
-        assertNotNull("Should have repo_id property", properties?.get(ParamNames.REPO_ID))
-        assertTrue("repo_id should be required", schema[SchemaConstants.REQUIRED].toString().contains(ParamNames.REPO_ID))
-    }
-
-    fun testGetRepoScopedClientConfigToolSchema() {
-        val tool = GetRepoScopedClientConfigTool()
-
-        assertEquals(ToolNames.GET_REPO_SCOPED_CLIENT_CONFIG, tool.name)
-        assertNotNull(tool.description)
-
-        val schema = tool.inputSchema
-        val properties = schema[SchemaConstants.PROPERTIES]?.jsonObject
-        assertNotNull("Should have project_path property", properties?.get(ParamNames.PROJECT_PATH))
-        assertNotNull("Should have client property", properties?.get(ParamNames.CLIENT))
-    }
-
-    fun testSyncCodexWorkspaceReposToolSchema() {
-        val tool = SyncCodexWorkspaceReposTool()
-
-        assertEquals(ToolNames.SYNC_CODEX_WORKSPACE_REPOS, tool.name)
-        assertNotNull(tool.description)
-
-        val schema = tool.inputSchema
-        val properties = schema[SchemaConstants.PROPERTIES]?.jsonObject
-        assertNotNull("Should have project_path property", properties?.get(ParamNames.PROJECT_PATH))
-        assertNotNull("Should have dryRun property", properties?.get("dryRun"))
-        assertNotNull("Should have codex_state_path property", properties?.get("codex_state_path"))
-        assertNotNull("Should have includeWorktrees property", properties?.get("includeWorktrees"))
-        assertNotNull("Should have codexProjectRootsOnly property", properties?.get("codexProjectRootsOnly"))
-        assertNotNull("Should have activeWorkspaceRootsOnly property", properties?.get("activeWorkspaceRootsOnly"))
-        assertNotNull("Should have requireMatchingGitHubRemote property", properties?.get("requireMatchingGitHubRemote"))
-        assertNotNull("Should have includeAgentContentRoots property", properties?.get("includeAgentContentRoots"))
-        assertNotNull("Should have installCodexMcp property", properties?.get("installCodexMcp"))
-        assertNull("Should not have required array", schema[SchemaConstants.REQUIRED])
-    }
-
-    fun testSyncCodexWorkspaceReposToolPreservesBlankGithubOwnerOverride() {
-        val options = SyncCodexWorkspaceReposTool().parseOptions(
-            buildJsonObject {
-                put("githubOwner", JsonPrimitive(""))
-            }
-        )
-
-        assertEquals("", options.githubOwner)
-    }
-
-    fun testSyncCodexWorkspaceReposToolRegistersAcceptedLocalContentRoots() {
-        val syncPlan = CodexWorkspaceSyncService.Plan(
-            discovered = 1,
-            accepted = listOf(
-                CodexWorkspaceSyncService.ResolvedRepo(
-                    repoRootPath = "C:/Users/Tanner/Documents/Workspaces/Projects/jetbrains-bridge",
-                    source = "project-order"
-                )
-            ),
-            alreadyAttached = emptyList(),
-            toAttach = emptyList(),
-            toDetach = emptyList(),
-            toDetachModules = emptyList(),
-            acceptedLocalContentRoots = listOf(
-                CodexWorkspaceSyncService.ResolvedLocalContentRoot(
-                    rootPath = "C:/Users/Tanner/.codex",
-                    source = "agent-content-root:.codex",
-                    moduleName = ".codex"
-                ),
-                CodexWorkspaceSyncService.ResolvedLocalContentRoot(
-                    rootPath = "C:/Users/Tanner/.agents",
-                    source = "agent-content-root:.agents",
-                    moduleName = ".agents"
-                )
-            ),
-            alreadyAttachedLocalContentRoots = emptyList(),
-            toAttachLocalContentRoots = emptyList(),
-            skipped = emptyList()
-        )
-
-        val registrationPlan = SyncCodexWorkspaceReposTool().buildRegistrationPlan(
-            syncPlan,
-            workspaceProjectPath = "C:/Users/Tanner/Documents/Workspaces/Workspace",
-            broadStreamableHttpUrl = "http://127.0.0.1:29170/index-mcp/streamable-http"
-        )
-
-        assertEquals(
-            listOf("agents", "codex", "jetbrains-bridge"),
-            registrationPlan.servers.mapNotNull { it.repoId }.sorted()
-        )
-    }
-
-    fun testInstallRepoScopedCodexConfigToolSchema() {
-        val tool = InstallRepoScopedCodexConfigTool()
-
-        assertEquals(ToolNames.INSTALL_REPO_SCOPED_CODEX_CONFIG, tool.name)
-        assertNotNull(tool.description)
-
-        val schema = tool.inputSchema
-        val properties = schema[SchemaConstants.PROPERTIES]?.jsonObject
-        assertNotNull("Should have project_path property", properties?.get(ParamNames.PROJECT_PATH))
-        assertNotNull("Should have dryRun property", properties?.get("dryRun"))
-        assertNull("Should not have required array", schema[SchemaConstants.REQUIRED])
-    }
-
-    fun testRepoWorkspaceToolsAreRegistered() {
+    fun testWorkspaceManagementToolsAreOwnedByWorkspaceManager() {
         val registry = ToolRegistry()
         registry.registerBuiltInTools()
 
-        assertNotNull("ide_attach_repo_to_workspace should be registered", registry.getTool(ToolNames.ATTACH_REPO_TO_WORKSPACE))
-        assertNotNull("ide_detach_repo_from_workspace should be registered", registry.getTool(ToolNames.DETACH_REPO_FROM_WORKSPACE))
-        assertNotNull("ide_get_repo_scoped_client_config should be registered", registry.getTool(ToolNames.GET_REPO_SCOPED_CLIENT_CONFIG))
-        assertNotNull("ide_install_repo_scoped_codex_config should be registered", registry.getTool(ToolNames.INSTALL_REPO_SCOPED_CODEX_CONFIG))
-        assertNotNull("ide_sync_codex_workspace_repos should be registered", registry.getTool(ToolNames.SYNC_CODEX_WORKSPACE_REPOS))
+        val movedToolNames = listOf(
+            "ide_attach_repo_to_workspace",
+            "ide_detach_repo_from_workspace",
+            "ide_get_repo_scoped_client_config",
+            "ide_install_repo_scoped_codex_config",
+            "ide_sync_codex_workspace_repos"
+        )
+
+        for (toolName in movedToolNames) {
+            assertNull("$toolName should be owned by Workspace Manager, not Index MCP", registry.getTool(toolName))
+            assertFalse("$toolName should not be listed by Index MCP constants", ToolNames.ALL.contains(toolName))
+        }
+    }
+
+    fun testWorkspaceManagementActionIsOwnedByWorkspaceManager() {
+        val pluginXml = Files.readString(Path.of("src/main/resources/META-INF/plugin.xml"))
+
+        assertFalse(
+            "Index MCP should not register the Workspace sync action",
+            pluginXml.contains("McpServer.SyncCodexRepos")
+        )
+        assertFalse(
+            "Index MCP should not register the Bridge Repos Services contributor",
+            pluginXml.contains("RepoRunConfigServiceContributor")
+        )
     }
 
     fun testFindUsagesToolSchema() {

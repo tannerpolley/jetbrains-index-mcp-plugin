@@ -1,6 +1,8 @@
 package com.github.hechtcarmel.jetbrainsindexmcpplugin.settings
 
 import junit.framework.TestCase
+import java.nio.file.Files
+import java.nio.file.Path
 
 class McpSettingsUnitTest : TestCase() {
 
@@ -11,9 +13,6 @@ class McpSettingsUnitTest : TestCase() {
 
         assertEquals("Default maxHistorySize should be 100", 100, state.maxHistorySize)
         assertFalse("Default syncExternalChanges should be false", state.syncExternalChanges)
-        assertTrue("Default autoSyncCodexWorkspaceRepos should be true", state.autoSyncCodexWorkspaceRepos)
-        assertTrue("Default autoInstallCodexMcpRegistrations should be true", state.autoInstallCodexMcpRegistrations)
-        assertEquals("Default codexWorkspaceGitHubOwner should be tannerpolley", "tannerpolley", state.codexWorkspaceGitHubOwner)
         assertEquals("Default serverHost should be 127.0.0.1", "127.0.0.1", state.serverHost)
     }
 
@@ -40,36 +39,16 @@ class McpSettingsUnitTest : TestCase() {
         assertTrue(state.syncExternalChanges)
     }
 
-    fun testStateAutoSyncCodexWorkspaceReposMutable() {
-        val state = McpSettings.State()
-        state.autoSyncCodexWorkspaceRepos = false
-
-        assertFalse(state.autoSyncCodexWorkspaceRepos)
-    }
-
-    fun testStateAutoInstallCodexMcpRegistrationsMutable() {
-        val state = McpSettings.State()
-        state.autoInstallCodexMcpRegistrations = false
-
-        assertFalse(state.autoInstallCodexMcpRegistrations)
-    }
-
     // State custom constructor tests
 
     fun testStateCustomConstructor() {
         val state = McpSettings.State(
             maxHistorySize = 500,
-            syncExternalChanges = true,
-            autoSyncCodexWorkspaceRepos = false,
-            autoInstallCodexMcpRegistrations = false,
-            codexWorkspaceGitHubOwner = "other-owner"
+            syncExternalChanges = true
         )
 
         assertEquals(500, state.maxHistorySize)
         assertTrue(state.syncExternalChanges)
-        assertFalse(state.autoSyncCodexWorkspaceRepos)
-        assertFalse(state.autoInstallCodexMcpRegistrations)
-        assertEquals("other-owner", state.codexWorkspaceGitHubOwner)
     }
 
     // State copy tests
@@ -81,9 +60,6 @@ class McpSettingsUnitTest : TestCase() {
         assertEquals(50, original.maxHistorySize)
         assertEquals(150, copy.maxHistorySize)
         assertEquals(original.syncExternalChanges, copy.syncExternalChanges)
-        assertEquals(original.autoSyncCodexWorkspaceRepos, copy.autoSyncCodexWorkspaceRepos)
-        assertEquals(original.autoInstallCodexMcpRegistrations, copy.autoInstallCodexMcpRegistrations)
-        assertEquals(original.codexWorkspaceGitHubOwner, copy.codexWorkspaceGitHubOwner)
     }
 
     // State equals and hashCode tests
@@ -124,43 +100,39 @@ class McpSettingsUnitTest : TestCase() {
 
         settings.maxHistorySize = 250
         settings.syncExternalChanges = true
-        settings.autoSyncCodexWorkspaceRepos = false
-        settings.autoInstallCodexMcpRegistrations = false
-        settings.codexWorkspaceGitHubOwner = "other-owner"
 
         assertEquals(250, settings.maxHistorySize)
         assertTrue(settings.syncExternalChanges)
-        assertFalse(settings.autoSyncCodexWorkspaceRepos)
-        assertFalse(settings.autoInstallCodexMcpRegistrations)
-        assertEquals("other-owner", settings.codexWorkspaceGitHubOwner)
     }
 
     fun testMcpSettingsLoadState() {
         val settings = McpSettings()
         val newState = McpSettings.State(
             maxHistorySize = 75,
-            syncExternalChanges = true,
-            autoSyncCodexWorkspaceRepos = false,
-            autoInstallCodexMcpRegistrations = false,
-            codexWorkspaceGitHubOwner = "other-owner"
+            syncExternalChanges = true
         )
 
         settings.loadState(newState)
 
         assertEquals(75, settings.maxHistorySize)
         assertTrue(settings.syncExternalChanges)
-        assertFalse(settings.autoSyncCodexWorkspaceRepos)
-        assertFalse(settings.autoInstallCodexMcpRegistrations)
-        assertEquals("other-owner", settings.codexWorkspaceGitHubOwner)
     }
 
-    fun testCodexWorkspaceGitHubOwnerFallsBackToLocalDefaultWhenBlank() {
-        val settings = McpSettings()
+    fun testWorkspaceManagementSettingsAreOwnedByWorkspaceManager() {
+        val bundle = Files.readString(Path.of("src/main/resources/messages/McpBundle.properties"))
 
-        settings.codexWorkspaceGitHubOwner = "   "
-
-        assertEquals("tannerpolley", settings.codexWorkspaceGitHubOwner)
-        assertEquals("tannerpolley", settings.state.codexWorkspaceGitHubOwner)
+        assertFalse(
+            "Index MCP settings should not expose Workspace auto-sync controls",
+            bundle.contains("settings.autoSyncCodexWorkspaceRepos")
+        )
+        assertFalse(
+            "Index MCP settings should not expose Codex MCP auto-registration controls",
+            bundle.contains("settings.autoInstallCodexMcpRegistrations")
+        )
+        assertFalse(
+            "Index MCP settings should not expose Workspace GitHub owner controls",
+            bundle.contains("settings.codexWorkspaceGitHubOwner")
+        )
     }
 
     fun testMcpSettingsGetStateReturnsCurrentState() {

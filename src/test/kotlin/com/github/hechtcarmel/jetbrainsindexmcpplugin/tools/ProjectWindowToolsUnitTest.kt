@@ -76,7 +76,7 @@ class ProjectWindowToolsUnitTest : TestCase() {
     }
 
     fun testProjectWindowToolsAreDisabledByDefault() {
-        val defaults = McpSettings.State().disabledTools
+        val defaults = McpSettings().disabledTools
         assertTrue("ide_close_project must be opt-in", defaults.contains(ToolNames.CLOSE_PROJECT))
         assertTrue("ide_open_project must be opt-in", defaults.contains(ToolNames.OPEN_PROJECT))
         assertTrue("ide_set_power_save_mode must be opt-in", defaults.contains(ToolNames.SET_POWER_SAVE_MODE))

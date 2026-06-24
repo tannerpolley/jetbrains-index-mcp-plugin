@@ -1,6 +1,5 @@
 package com.github.hechtcarmel.jetbrainsindexmcpplugin.util
 
-import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.RepoScope
 import junit.framework.TestCase
 
 class ClientConfigGeneratorUnitTest : TestCase() {
@@ -108,25 +107,6 @@ class ClientConfigGeneratorUnitTest : TestCase() {
             "http://127.0.0.1:29170/index-mcp/repos/jetbrains-bridge/streamable-http",
             url
         )
-    }
-
-    fun testBuildRepoScopedCodexCommandsIncludesBroadAndScopedServers() {
-        val commands = ClientConfigGenerator.buildRepoScopedCodexCommands(
-            broadStreamableHttpUrl = "http://127.0.0.1:29170/index-mcp/streamable-http",
-            broadServerName = "intellij-index",
-            repoScopes = listOf(
-                RepoScope(
-                    repoId = "jetbrains-bridge",
-                    repoRootPath = "C:/Users/Tanner/Documents/Workspaces/Projects/jetbrains-bridge",
-                    workspaceProjectPath = "C:/Users/Tanner/Documents/Workspaces/Workspace"
-                )
-            ),
-            platform = ClientConfigGenerator.CommandPlatform.POSIX
-        )
-
-        assertEquals(2, commands.size)
-        assertTrue(commands[0].contains("codex mcp add intellij-index --url http://127.0.0.1:29170/index-mcp/streamable-http"))
-        assertTrue(commands[1].contains("codex mcp add intellij-index-jetbrains-bridge --url http://127.0.0.1:29170/index-mcp/repos/jetbrains-bridge/streamable-http"))
     }
 
     // getConfigLocationHint tests

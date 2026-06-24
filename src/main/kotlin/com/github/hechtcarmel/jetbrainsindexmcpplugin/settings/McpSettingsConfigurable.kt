@@ -48,9 +48,6 @@ class McpSettingsConfigurable : Configurable {
     private var maxHistorySizeSpinner: JSpinner? = null
     private var serverPortSpinner: JSpinner? = null
     private var syncExternalChangesCheckBox: JBCheckBox? = null
-    private var autoSyncCodexWorkspaceReposCheckBox: JBCheckBox? = null
-    private var autoInstallCodexMcpRegistrationsCheckBox: JBCheckBox? = null
-    private var codexWorkspaceGitHubOwnerField: JBTextField? = null
     private var availableProjectsModeComboBox: ComboBox<McpSettings.AvailableProjectsMode>? = null
     private var responseFormatComboBox: ComboBox<McpSettings.ResponseFormat>? = null
     private val toolCheckBoxes = mutableMapOf<String, JBCheckBox>()
@@ -102,15 +99,6 @@ class McpSettingsConfigurable : Configurable {
         syncExternalChangesCheckBox = JBCheckBox(McpBundle.message("settings.syncExternalChanges")).apply {
             toolTipText = McpBundle.message("settings.syncExternalChanges.tooltip")
         }
-        autoSyncCodexWorkspaceReposCheckBox = JBCheckBox(McpBundle.message("settings.autoSyncCodexWorkspaceRepos")).apply {
-            toolTipText = McpBundle.message("settings.autoSyncCodexWorkspaceRepos.tooltip")
-        }
-        autoInstallCodexMcpRegistrationsCheckBox = JBCheckBox(McpBundle.message("settings.autoInstallCodexMcpRegistrations")).apply {
-            toolTipText = McpBundle.message("settings.autoInstallCodexMcpRegistrations.tooltip")
-        }
-        codexWorkspaceGitHubOwnerField = JBTextField(McpSettings.State().codexWorkspaceGitHubOwner, 25).apply {
-            toolTipText = McpBundle.message("settings.codexWorkspaceGitHubOwner.tooltip")
-        }
         availableProjectsModeComboBox = ComboBox(McpSettings.AvailableProjectsMode.values()).apply {
             toolTipText = McpBundle.message("settings.availableProjectsMode.tooltip")
             renderer = SimpleListCellRenderer.create("") { value ->
@@ -149,9 +137,6 @@ class McpSettingsConfigurable : Configurable {
             .addLabeledComponent(JBLabel(McpBundle.message("settings.maxHistorySize") + ":"), maxHistorySizeSpinner!!, 1, false)
             .addLabeledComponent(JBLabel(McpBundle.message("settings.availableProjectsMode") + ":"), availableProjectsModeComboBox!!, 1, false)
             .addLabeledComponent(JBLabel(McpBundle.message("settings.responseFormat") + ":"), responseFormatComboBox!!, 1, false)
-            .addComponent(autoSyncCodexWorkspaceReposCheckBox!!, 1)
-            .addComponent(autoInstallCodexMcpRegistrationsCheckBox!!, 1)
-            .addLabeledComponent(JBLabel(McpBundle.message("settings.codexWorkspaceGitHubOwner") + ":"), codexWorkspaceGitHubOwnerField!!, 1, false)
             .addComponent(syncPanel, 1)
             .addSeparator(10)
             .addComponent(JBLabel(McpBundle.message("settings.tools.title")), 5)
@@ -197,9 +182,6 @@ class McpSettingsConfigurable : Configurable {
             serverPortSpinner?.value != settings.serverPort ||
             maxHistorySizeSpinner?.value != settings.maxHistorySize ||
             syncExternalChangesCheckBox?.isSelected != settings.syncExternalChanges ||
-            autoSyncCodexWorkspaceReposCheckBox?.isSelected != settings.autoSyncCodexWorkspaceRepos ||
-            autoInstallCodexMcpRegistrationsCheckBox?.isSelected != settings.autoInstallCodexMcpRegistrations ||
-            codexWorkspaceGitHubOwnerField?.text?.trim() != settings.codexWorkspaceGitHubOwner ||
             availableProjectsModeComboBox?.selectedItem != settings.availableProjectsMode ||
             responseFormatComboBox?.selectedItem != settings.responseFormat) {
             return true
@@ -255,9 +237,6 @@ class McpSettingsConfigurable : Configurable {
         settings.serverPort = newPort
         settings.maxHistorySize = maxHistorySizeSpinner?.value as? Int ?: 100
         settings.syncExternalChanges = syncExternalChangesCheckBox?.isSelected ?: false
-        settings.autoSyncCodexWorkspaceRepos = autoSyncCodexWorkspaceReposCheckBox?.isSelected ?: true
-        settings.autoInstallCodexMcpRegistrations = autoInstallCodexMcpRegistrationsCheckBox?.isSelected ?: true
-        settings.codexWorkspaceGitHubOwner = codexWorkspaceGitHubOwnerField?.text?.trim() ?: McpSettings.State().codexWorkspaceGitHubOwner
         settings.availableProjectsMode =
             availableProjectsModeComboBox?.selectedItem as? McpSettings.AvailableProjectsMode
                 ?: McpSettings.AvailableProjectsMode.EXPANDED
@@ -349,9 +328,6 @@ class McpSettingsConfigurable : Configurable {
         serverPortSpinner?.value = settings.serverPort
         maxHistorySizeSpinner?.value = settings.maxHistorySize
         syncExternalChangesCheckBox?.isSelected = settings.syncExternalChanges
-        autoSyncCodexWorkspaceReposCheckBox?.isSelected = settings.autoSyncCodexWorkspaceRepos
-        autoInstallCodexMcpRegistrationsCheckBox?.isSelected = settings.autoInstallCodexMcpRegistrations
-        codexWorkspaceGitHubOwnerField?.text = settings.codexWorkspaceGitHubOwner
         availableProjectsModeComboBox?.selectedItem = settings.availableProjectsMode
         responseFormatComboBox?.selectedItem = settings.responseFormat
         
@@ -449,8 +425,6 @@ class McpSettingsConfigurable : Configurable {
         serverPortSpinner = null
         maxHistorySizeSpinner = null
         syncExternalChangesCheckBox = null
-        autoSyncCodexWorkspaceReposCheckBox = null
-        autoInstallCodexMcpRegistrationsCheckBox = null
         availableProjectsModeComboBox = null
         responseFormatComboBox = null
         toolCheckBoxes.clear()

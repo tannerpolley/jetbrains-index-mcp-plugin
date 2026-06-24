@@ -161,7 +161,6 @@ for detailed documentation and examples.</p>
     <actions>
         <group id="McpServer.Actions" text="Index MCP Server">
             <action id="McpServer.CopyUrl" class="com.github.hechtcarmel.jetbrainsindexmcpplugin.actions.CopyServerUrlAction" text="Copy Server URL" description="Copy the MCP server URL to clipboard"/>
-            <action id="McpServer.SyncCodexRepos" class="com.github.hechtcarmel.jetbrainsindexmcpplugin.actions.SyncCodexWorkspaceReposAction" text="Sync Codex Repos" description="Refresh Codex-active GitHub-owner-approved repos in the master Workspace"/>
             <action id="McpServer.CopyConfig" class="com.github.hechtcarmel.jetbrainsindexmcpplugin.actions.CopyClientConfigAction" text="Copy Client Config..." description="Copy MCP client configuration for AI assistants"/>
             <action id="McpServer.ClearHistory" class="com.github.hechtcarmel.jetbrainsindexmcpplugin.actions.ClearHistoryAction" text="Clear History" description="Clear command history"/>
             <action id="McpServer.ExportHistory" class="com.github.hechtcarmel.jetbrainsindexmcpplugin.actions.ExportHistoryAction" text="Export History..." description="Export command history to file"/>
