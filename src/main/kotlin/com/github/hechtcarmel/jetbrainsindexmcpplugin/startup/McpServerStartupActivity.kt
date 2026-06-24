@@ -6,7 +6,6 @@ import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.BuildDiagnosticsCac
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.CodexMcpRegistrationInstaller
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.CodexWorkspaceSyncService
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.McpServerService
-import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.RepoScopeRegistry
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.settings.McpSettings
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
@@ -76,7 +75,15 @@ class McpServerStartupActivity : ProjectActivity {
         val app = ApplicationManager.getApplication()
         app.executeOnPooledThread {
             try {
-                val prepared = CodexWorkspaceSyncService.prepare(project)
+                val prepared = CodexWorkspaceSyncService.prepare(
+                    project,
+                    CodexWorkspaceSyncService.Options(
+                        includeWorktrees = false,
+                        codexProjectRootsOnly = true,
+                        githubOwner = "",
+                        requireMatchingGitHubRemote = false
+                    )
+                )
                 app.invokeLater({
                     if (project.isDisposed) return@invokeLater
                     try {
@@ -111,8 +118,8 @@ class McpServerStartupActivity : ProjectActivity {
 
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
-                val repoScopes = RepoScopeRegistry.buildScopes(
-                    prepared.plan.accepted.map { it.repoRootPath }.distinct(),
+                val repoScopes = CodexWorkspaceSyncService.buildRegistrationScopes(
+                    prepared.plan,
                     prepared.workspaceProjectPath
                 )
                 val result = CodexMcpRegistrationInstaller.install(

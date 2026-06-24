@@ -4,7 +4,6 @@ import com.github.hechtcarmel.jetbrainsindexmcpplugin.constants.ParamNames
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.constants.ToolNames
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.CodexMcpRegistrationInstaller
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.CodexWorkspaceSyncService
-import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.RepoScopeRegistry
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.models.ToolCallResult
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.AbstractMcpTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.models.RepoScopedClientConfigResult
@@ -37,8 +36,8 @@ class GetRepoScopedClientConfigTool : AbstractMcpTool() {
         val plan = if (CodexWorkspaceSyncService.shouldAutoSyncProject(project)) {
             val prepared = CodexWorkspaceSyncService.prepare(project, CodexWorkspaceSyncService.Options(dryRun = true))
             CodexMcpRegistrationInstaller.buildPlan(
-                repoScopes = RepoScopeRegistry.buildScopes(
-                    prepared.plan.accepted.map { it.repoRootPath }.distinct(),
+                repoScopes = CodexWorkspaceSyncService.buildRegistrationScopes(
+                    prepared.plan,
                     prepared.workspaceProjectPath
                 )
             )

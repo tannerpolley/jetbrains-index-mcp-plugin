@@ -33,7 +33,10 @@ object CodexWorkspaceSyncService {
         val codexStatePath: String? = null,
         val includeWorktrees: Boolean = true,
         val githubOwner: String? = null,
-        val includeAgentContentRoots: Boolean = true
+        val includeAgentContentRoots: Boolean = true,
+        val codexProjectRootsOnly: Boolean = false,
+        val activeWorkspaceRootsOnly: Boolean = false,
+        val requireMatchingGitHubRemote: Boolean = false
     )
 
     data class Candidate(
@@ -101,7 +104,9 @@ object CodexWorkspaceSyncService {
 
         val discovery = readStateCandidates(
             stateFile = stateFile,
-            includeAgentContentRoots = options.includeAgentContentRoots
+            includeAgentContentRoots = options.includeAgentContentRoots,
+            codexProjectRootsOnly = options.codexProjectRootsOnly,
+            activeWorkspaceRootsOnly = options.activeWorkspaceRootsOnly
         )
         val existingRepoRoots = RepoScopeRegistry.collectProjectRepoScopes(project).map { it.repoRootPath }
         val existingContentRootPaths = RepoScopeRegistry.collectProjectContentRootPaths(project)
@@ -117,6 +122,7 @@ object CodexWorkspaceSyncService {
             workspaceProjectPath = workspaceProjectPath,
             includeWorktrees = options.includeWorktrees,
             githubOwner = githubOwner,
+            requireMatchingGitHubRemote = options.requireMatchingGitHubRemote,
             pruneStaleAttached = discovery.skipped.isEmpty()
         )
 
@@ -131,6 +137,16 @@ object CodexWorkspaceSyncService {
             workspaceProjectPath = workspaceProjectPath
         )
     }
+
+    fun buildRegistrationScopes(
+        plan: Plan,
+        workspaceProjectPath: String?
+    ): List<RepoScope> =
+        RepoScopeRegistry.buildIndexScopes(
+            repoRootPaths = plan.accepted.map { it.repoRootPath }.distinct(),
+            manualRootPaths = plan.acceptedLocalContentRoots.map { it.rootPath }.distinct(),
+            workspaceProjectPath = workspaceProjectPath
+        )
 
     fun sync(project: Project, options: Options = Options()): CodexWorkspaceSyncResult {
         val prepared = prepare(project, options)
@@ -359,6 +375,7 @@ object CodexWorkspaceSyncService {
         resolveGitRoot: (String) -> String? = ::resolveGitRootPath,
         listWorktrees: (String) -> List<String> = ::listGitWorktreePaths,
         githubOwner: String? = null,
+        requireMatchingGitHubRemote: Boolean = false,
         listRemoteUrls: (String) -> List<String> = ::listGitRemoteUrls,
         pruneStaleAttached: Boolean = true
     ): Plan {
@@ -380,6 +397,34 @@ object CodexWorkspaceSyncService {
             val normalized = RepoScopeRegistry.normalizeRepoRootPath(repoRootPath)
             if (requiredOwner != null) {
                 val remoteUrls = listRemoteUrls(normalized)
+                val githubRemotes = remoteUrls
+                    .mapNotNull(::githubRemoteFromUrl)
+                    .distinctBy { "${it.first.lowercase()}/${it.second.lowercase()}" }
+
+                if (requireMatchingGitHubRemote) {
+                    val localRepoName = File(normalized).name
+                    val hasExactRemote = githubRemotes.any { (owner, repoName) ->
+                        owner.equals(requiredOwner, ignoreCase = true) &&
+                            repoName.equals(localRepoName, ignoreCase = true)
+                    }
+                    if (!hasExactRemote) {
+                        val reason = if (githubRemotes.isEmpty()) {
+                            "github_remote_missing"
+                        } else {
+                            val remoteText = githubRemotes
+                                .map { (owner, repoName) -> "$owner/$repoName" }
+                                .sorted()
+                                .joinToString("|")
+                            "github_remote_mismatch:$remoteText"
+                        }
+                        skipped.add(CodexWorkspaceSkippedPath(normalized, source, reason))
+                        return
+                    }
+
+                    resolvedByRoot.getOrPut(normalized) { linkedSetOf() }.add(source)
+                    return
+                }
+
                 if (remoteUrls.isEmpty()) {
                     resolvedByRoot.getOrPut(normalized) { linkedSetOf() }.add(source)
                     return
@@ -605,7 +650,9 @@ object CodexWorkspaceSyncService {
 
     fun extractCandidatesFromStateText(
         text: String,
-        nonArchivedThreadIds: Set<String> = emptySet()
+        nonArchivedThreadIds: Set<String> = emptySet(),
+        codexProjectRootsOnly: Boolean = false,
+        activeWorkspaceRootsOnly: Boolean = false
     ): List<Candidate> {
         val root = parser.parseToJsonElement(text)
         if (root !is JsonObject) return emptyList()
@@ -619,13 +666,30 @@ object CodexWorkspaceSyncService {
 
         val activeWorkspaceRoots = extractLocalPaths(root["active-workspace-roots"])
         val savedWorkspaceRoots = extractLocalPaths(root["electron-saved-workspace-roots"])
+        val projectOrderRoots = extractLocalPaths(root["project-order"])
         val openWorkspaceRootKeys = (activeWorkspaceRoots + savedWorkspaceRoots)
             .map(::localPathKey)
             .toSet()
 
+        if (codexProjectRootsOnly) {
+            val roots = projectOrderRoots.ifEmpty { activeWorkspaceRoots }
+            for (path in roots) {
+                addCandidate(path, if (projectOrderRoots.isEmpty()) "active-workspace-roots" else "project-order")
+            }
+            return candidatesByPath.map { (path, sources) ->
+                Candidate(path, sources.sorted().joinToString(","))
+            }
+        }
+
         for (path in activeWorkspaceRoots) {
             addCandidate(path, "active-workspace-roots")
         }
+        if (activeWorkspaceRootsOnly) {
+            return candidatesByPath.map { (path, sources) ->
+                Candidate(path, sources.sorted().joinToString(","))
+            }
+        }
+
         for (path in savedWorkspaceRoots) {
             addCandidate(path, "electron-saved-workspace-roots")
         }
@@ -684,16 +748,16 @@ object CodexWorkspaceSyncService {
     }
 
     fun listGitRemoteUrls(repoRootPath: String): List<String> {
-        return try {
+        val gitRemoteUrls = try {
             val process = ProcessBuilder("git", "-C", repoRootPath, "remote", "-v")
                 .redirectErrorStream(true)
                 .start()
             if (!process.waitFor(5, TimeUnit.SECONDS)) {
                 process.destroyForcibly()
-                return emptyList()
+                return listGitRemoteUrlsFromConfig(repoRootPath)
             }
             if (process.exitValue() != 0) {
-                return emptyList()
+                return listGitRemoteUrlsFromConfig(repoRootPath)
             }
             process.inputStream.bufferedReader().use { reader ->
                 reader.readText()
@@ -707,6 +771,61 @@ object CodexWorkspaceSyncService {
             LOG.debug("Failed to list Git remotes for $repoRootPath", e)
             emptyList()
         }
+        return gitRemoteUrls.ifEmpty { listGitRemoteUrlsFromConfig(repoRootPath) }
+    }
+
+    fun listGitRemoteUrlsFromConfig(repoRootPath: String): List<String> {
+        val gitConfig = resolveGitConfigFile(File(repoRootPath)) ?: return emptyList()
+        return try {
+            val urls = mutableListOf<String>()
+            var inRemoteSection = false
+            gitConfig.readLines().forEach { line ->
+                val trimmed = line.trim()
+                when {
+                    trimmed.startsWith("[") -> {
+                        inRemoteSection = Regex("""^\[remote\s+"[^"]+"\]$""").matches(trimmed)
+                    }
+                    inRemoteSection && trimmed.startsWith("url") -> {
+                        val value = trimmed.substringAfter('=', missingDelimiterValue = "").trim()
+                        if (value.isNotEmpty()) {
+                            urls += value
+                        }
+                    }
+                }
+            }
+            urls.distinct()
+        } catch (e: Exception) {
+            LOG.debug("Failed to read Git config remotes from ${gitConfig.absolutePath}", e)
+            emptyList()
+        }
+    }
+
+    private fun resolveGitConfigFile(repoRoot: File): File? {
+        val gitMarker = File(repoRoot, ".git")
+        val gitDir = when {
+            gitMarker.isDirectory -> gitMarker
+            gitMarker.isFile -> {
+                val gitDirText = try {
+                    gitMarker.readText().trim()
+                } catch (e: Exception) {
+                    LOG.debug("Failed to read Git marker file ${gitMarker.absolutePath}", e)
+                    return null
+                }
+                val gitDirPath = gitDirText.removePrefix("gitdir:").trim().takeIf { it != gitDirText && it.isNotEmpty() }
+                    ?: return null
+                val resolvedGitDir = File(gitDirPath).takeIf { it.isAbsolute } ?: File(repoRoot, gitDirPath)
+                val commonDir = File(resolvedGitDir, "commondir")
+                if (commonDir.isFile) {
+                    val commonDirPath = commonDir.readText().trim()
+                    File(commonDirPath).takeIf { it.isAbsolute } ?: File(resolvedGitDir, commonDirPath)
+                } else {
+                    resolvedGitDir
+                }
+            }
+            else -> return null
+        }
+
+        return File(gitDir, "config").takeIf { it.isFile }
     }
 
     fun githubOwnerFromRemoteUrl(remoteUrl: String): String? {
@@ -757,7 +876,9 @@ object CodexWorkspaceSyncService {
 
     private fun readStateCandidates(
         stateFile: File,
-        includeAgentContentRoots: Boolean
+        includeAgentContentRoots: Boolean,
+        codexProjectRootsOnly: Boolean,
+        activeWorkspaceRootsOnly: Boolean
     ): Discovery {
         val candidates = mutableListOf<Candidate>()
         val skipped = mutableListOf<CodexWorkspaceSkippedPath>()
@@ -770,7 +891,9 @@ object CodexWorkspaceSyncService {
             try {
                 candidates += extractCandidatesFromStateText(
                     text = stateFile.readText(),
-                    nonArchivedThreadIds = readNonArchivedThreadIds(stateFile.parentFile ?: defaultCodexHome())
+                    nonArchivedThreadIds = readNonArchivedThreadIds(stateFile.parentFile ?: defaultCodexHome()),
+                    codexProjectRootsOnly = codexProjectRootsOnly,
+                    activeWorkspaceRootsOnly = activeWorkspaceRootsOnly
                 )
             } catch (e: Exception) {
                 skipped.add(

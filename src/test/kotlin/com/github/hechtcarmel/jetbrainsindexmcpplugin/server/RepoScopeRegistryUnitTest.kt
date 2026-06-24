@@ -72,4 +72,37 @@ class RepoScopeRegistryUnitTest : TestCase() {
             selected
         )
     }
+
+    fun testManualIndexRootSelectionOnlyAllowsCodexAndAgentsDotFolders() {
+        val selected = RepoScopeRegistry.selectManualIndexRootPaths(
+            listOf(
+                "C:/Users/Tanner/.codex",
+                "C:/Users/Tanner/.agents",
+                "C:/Users/Tanner/codex",
+                "C:/Users/Tanner/.ssh"
+            )
+        )
+
+        assertEquals(
+            listOf("C:/Users/Tanner/.codex", "C:/Users/Tanner/.agents"),
+            selected
+        )
+    }
+
+    fun testBuildIndexScopesIncludesManualCodexAndAgentsRoots() {
+        val scopes = RepoScopeRegistry.buildIndexScopes(
+            repoRootPaths = listOf("C:/Users/Tanner/Documents/Workspaces/Projects/jetbrains-bridge"),
+            manualRootPaths = listOf(
+                "C:/Users/Tanner/.codex",
+                "C:/Users/Tanner/.agents",
+                "C:/Users/Tanner/codex"
+            ),
+            workspaceProjectPath = "C:/Users/Tanner/Documents/Workspaces/Workspace"
+        )
+
+        assertEquals(
+            listOf("agents", "codex", "jetbrains-bridge"),
+            scopes.map { it.repoId }.sorted()
+        )
+    }
 }

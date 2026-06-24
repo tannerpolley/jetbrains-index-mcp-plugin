@@ -494,7 +494,7 @@ class KtorMcpServer(
             return null
         }
 
-        val repoScope = RepoScopeRegistry.resolveOpenRepoScope(repoId)
+        val repoScope = RepoScopeRegistry.resolveOpenIndexScope(repoId)
         if (repoScope == null) {
             call.respond(HttpStatusCode.NotFound, "Unknown repo-scoped MCP route: $repoId")
             return null

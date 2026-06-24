@@ -11,6 +11,7 @@ import java.security.MessageDigest
 
 object RepoScopeRegistry {
     private val LOG = logger<RepoScopeRegistry>()
+    private val MANUAL_INDEX_ROOT_NAMES = setOf(".agents", ".codex")
 
     fun normalizeRepoRootPath(path: String): String =
         path.trim().trimEnd('/', '\\').replace('\\', '/')
@@ -62,6 +63,27 @@ object RepoScopeRegistry {
             .distinct()
             .filter { isGitRepoRoot(it) }
 
+    fun selectManualIndexRootPaths(candidatePaths: List<String>): List<String> =
+        candidatePaths
+            .map { normalizeRepoRootPath(it) }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .filter { rawLeafName(it) in MANUAL_INDEX_ROOT_NAMES }
+
+    fun buildIndexScopes(
+        repoRootPaths: List<String>,
+        manualRootPaths: List<String>,
+        workspaceProjectPath: String?
+    ): List<RepoScope> {
+        val scopeRoots = (
+            repoRootPaths.map { normalizeRepoRootPath(it) } +
+                selectManualIndexRootPaths(manualRootPaths)
+            )
+            .filter { it.isNotBlank() }
+            .distinct()
+        return buildScopes(scopeRoots, workspaceProjectPath)
+    }
+
     fun isPathInsideScope(scope: RepoScope, path: String): Boolean {
         return isPathInsideScope(scope.repoRootPath, path)
     }
@@ -96,9 +118,34 @@ object RepoScopeRegistry {
         return scopes.distinctBy { it.repoId }
     }
 
+    fun collectOpenIndexScopes(): List<RepoScope> {
+        if (ApplicationManager.getApplication() == null) {
+            return emptyList()
+        }
+
+        val scopes = mutableListOf<RepoScope>()
+        val openProjects = ProjectManager.getInstance().openProjects
+            .filter { !it.isDefault }
+
+        for (project in openProjects) {
+            scopes += collectProjectIndexScopes(project)
+        }
+
+        return scopes.distinctBy { it.repoId }
+    }
+
     fun collectProjectRepoScopes(project: Project): List<RepoScope> {
         val workspaceProjectPath = project.basePath?.let { normalizeRepoRootPath(it) }
         return buildScopes(collectRepoRootPaths(project), workspaceProjectPath)
+    }
+
+    fun collectProjectIndexScopes(project: Project): List<RepoScope> {
+        val workspaceProjectPath = project.basePath?.let { normalizeRepoRootPath(it) }
+        return buildIndexScopes(
+            repoRootPaths = collectRepoRootPaths(project),
+            manualRootPaths = collectProjectContentRootPaths(project),
+            workspaceProjectPath = workspaceProjectPath
+        )
     }
 
     fun collectProjectContentRootPaths(project: Project): List<String> {
@@ -173,6 +220,9 @@ object RepoScopeRegistry {
     fun resolveOpenRepoScope(repoId: String): RepoScope? =
         collectOpenRepoScopes().find { it.repoId == repoId }
 
+    fun resolveOpenIndexScope(repoId: String): RepoScope? =
+        collectOpenIndexScopes().find { it.repoId == repoId }
+
     fun scopeForPath(repoRootPath: String): RepoScope? {
         val normalized = normalizeRepoRootPath(repoRootPath)
         return collectOpenRepoScopes().find { normalizeRepoRootPath(it.repoRootPath) == normalized }
@@ -197,12 +247,15 @@ object RepoScopeRegistry {
     }
 
     private fun repoLeafName(path: String): String =
+        rawLeafName(path)
+            .ifBlank { "repo" }
+            .replace(Regex("[^A-Za-z0-9_-]+"), "-")
+            .trim('-', '_')
+            .ifBlank { "repo" }
+
+    private fun rawLeafName(path: String): String =
         normalizeRepoRootPath(path)
             .substringAfterLast('/')
-            .ifBlank { "repo" }
-            .replace(Regex("[^A-Za-z0-9._-]+"), "-")
-            .trim('-')
-            .ifBlank { "repo" }
 
     private fun inferRepoRootFromModuleFilePath(moduleFilePath: String): String? {
         val moduleFile = File(normalizeRepoRootPath(moduleFilePath))

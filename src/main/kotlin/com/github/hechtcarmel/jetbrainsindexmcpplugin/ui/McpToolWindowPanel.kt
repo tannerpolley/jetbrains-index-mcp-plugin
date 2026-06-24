@@ -343,7 +343,7 @@ class ServerStatusPanel(private val project: Project) : JBPanel<ServerStatusPane
                 broadStreamableHttpUrl = broadUrl,
                 projectName = project.name,
                 workspaceProjectPath = project.basePath,
-                repoScopes = RepoScopeRegistry.collectOpenRepoScopes(),
+                repoScopes = RepoScopeRegistry.collectOpenIndexScopes(),
                 serverState = state
             )
         )

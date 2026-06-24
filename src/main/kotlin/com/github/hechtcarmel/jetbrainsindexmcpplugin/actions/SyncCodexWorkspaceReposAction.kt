@@ -3,7 +3,6 @@ package com.github.hechtcarmel.jetbrainsindexmcpplugin.actions
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.McpConstants
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.CodexMcpRegistrationInstaller
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.CodexWorkspaceSyncService
-import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.RepoScopeRegistry
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.settings.McpSettings
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.models.CodexWorkspaceSyncResult
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.ui.McpToolWindowPanel
@@ -59,8 +58,8 @@ class SyncCodexWorkspaceReposAction : AnAction(
                 )
 
                 val registrationMessage = if (McpSettings.getInstance().autoInstallCodexMcpRegistrations) {
-                    val repoScopes = RepoScopeRegistry.buildScopes(
-                        prepared.plan.accepted.map { it.repoRootPath }.distinct(),
+                    val repoScopes = CodexWorkspaceSyncService.buildRegistrationScopes(
+                        prepared.plan,
                         prepared.workspaceProjectPath
                     )
                     val registration = CodexMcpRegistrationInstaller.install(

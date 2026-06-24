@@ -4,6 +4,7 @@ import com.github.hechtcarmel.jetbrainsindexmcpplugin.constants.ParamNames
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.constants.SchemaConstants
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.constants.ToolNames
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.BuiltInSearchScope
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.CodexWorkspaceSyncService
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.editor.GetActiveFileTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.editor.OpenFileTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.intelligence.GetDiagnosticsTool
@@ -38,6 +39,8 @@ import io.mockk.every
 import io.mockk.mockkObject
 import io.mockk.unmockkObject
 import junit.framework.TestCase
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -182,9 +185,64 @@ class ToolsUnitTest : TestCase() {
         assertNotNull("Should have dryRun property", properties?.get("dryRun"))
         assertNotNull("Should have codex_state_path property", properties?.get("codex_state_path"))
         assertNotNull("Should have includeWorktrees property", properties?.get("includeWorktrees"))
+        assertNotNull("Should have codexProjectRootsOnly property", properties?.get("codexProjectRootsOnly"))
+        assertNotNull("Should have activeWorkspaceRootsOnly property", properties?.get("activeWorkspaceRootsOnly"))
+        assertNotNull("Should have requireMatchingGitHubRemote property", properties?.get("requireMatchingGitHubRemote"))
         assertNotNull("Should have includeAgentContentRoots property", properties?.get("includeAgentContentRoots"))
         assertNotNull("Should have installCodexMcp property", properties?.get("installCodexMcp"))
         assertNull("Should not have required array", schema[SchemaConstants.REQUIRED])
+    }
+
+    fun testSyncCodexWorkspaceReposToolPreservesBlankGithubOwnerOverride() {
+        val options = SyncCodexWorkspaceReposTool().parseOptions(
+            buildJsonObject {
+                put("githubOwner", JsonPrimitive(""))
+            }
+        )
+
+        assertEquals("", options.githubOwner)
+    }
+
+    fun testSyncCodexWorkspaceReposToolRegistersAcceptedLocalContentRoots() {
+        val syncPlan = CodexWorkspaceSyncService.Plan(
+            discovered = 1,
+            accepted = listOf(
+                CodexWorkspaceSyncService.ResolvedRepo(
+                    repoRootPath = "C:/Users/Tanner/Documents/Workspaces/Projects/jetbrains-bridge",
+                    source = "project-order"
+                )
+            ),
+            alreadyAttached = emptyList(),
+            toAttach = emptyList(),
+            toDetach = emptyList(),
+            toDetachModules = emptyList(),
+            acceptedLocalContentRoots = listOf(
+                CodexWorkspaceSyncService.ResolvedLocalContentRoot(
+                    rootPath = "C:/Users/Tanner/.codex",
+                    source = "agent-content-root:.codex",
+                    moduleName = ".codex"
+                ),
+                CodexWorkspaceSyncService.ResolvedLocalContentRoot(
+                    rootPath = "C:/Users/Tanner/.agents",
+                    source = "agent-content-root:.agents",
+                    moduleName = ".agents"
+                )
+            ),
+            alreadyAttachedLocalContentRoots = emptyList(),
+            toAttachLocalContentRoots = emptyList(),
+            skipped = emptyList()
+        )
+
+        val registrationPlan = SyncCodexWorkspaceReposTool().buildRegistrationPlan(
+            syncPlan,
+            workspaceProjectPath = "C:/Users/Tanner/Documents/Workspaces/Workspace",
+            broadStreamableHttpUrl = "http://127.0.0.1:29170/index-mcp/streamable-http"
+        )
+
+        assertEquals(
+            listOf("agents", "codex", "jetbrains-bridge"),
+            registrationPlan.servers.mapNotNull { it.repoId }.sorted()
+        )
     }
 
     fun testInstallRepoScopedCodexConfigToolSchema() {

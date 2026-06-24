@@ -69,6 +69,41 @@ class CodexWorkspaceSyncServiceUnitTest : TestCase() {
         )
     }
 
+    fun testExtractCandidatesCanUseCodexDesktopProjectOrderOnly() {
+        val stateText = """
+            {
+              "project-order": [
+                "C:\\Users\\Tanner\\Documents\\Workspaces\\Engineering\\ePC-SAFT",
+                "C:\\Users\\Tanner\\Documents\\Workspaces\\Projects\\jetbrains-bridge"
+              ],
+              "active-workspace-roots": [
+                "C:\\Users\\Tanner\\Documents\\Workspaces\\Apps\\mplgallery"
+              ],
+              "electron-saved-workspace-roots": [
+                "C:\\Users\\Tanner\\Documents\\Workspaces\\Apps\\mplgallery"
+              ],
+              "thread-workspace-root-hints": {
+                "019e93f2-8668-7800-ba40-752ad5aba592": "C:\\Users\\Tanner\\Documents\\Workspaces\\Apps\\mplgallery"
+              }
+            }
+        """.trimIndent()
+
+        val candidates = CodexWorkspaceSyncService.extractCandidatesFromStateText(
+            stateText,
+            nonArchivedThreadIds = setOf("019e93f2-8668-7800-ba40-752ad5aba592"),
+            codexProjectRootsOnly = true
+        )
+
+        assertEquals(
+            listOf(
+                "C:\\Users\\Tanner\\Documents\\Workspaces\\Engineering\\ePC-SAFT",
+                "C:\\Users\\Tanner\\Documents\\Workspaces\\Projects\\jetbrains-bridge"
+            ),
+            candidates.map { it.path }
+        )
+        assertEquals(listOf("project-order", "project-order"), candidates.map { it.source })
+    }
+
     fun testBuildPlanResolvesNestedPathsAndGitWorktrees() {
         val repo = createGitRepo("repo")
         val nested = File(repo, "packages/pkg").also { it.mkdirs() }
@@ -198,6 +233,49 @@ class CodexWorkspaceSyncServiceUnitTest : TestCase() {
         assertTrue(plan.toDetach.isEmpty())
     }
 
+    fun testBuildPlanCanRequireExactGitHubOwnerAndRepoRemote() {
+        val owned = createGitRepo("owned-repo")
+        val orgOwned = createGitRepo("ePC-SAFT")
+        val noRemote = createGitRepo("no-remote-repo")
+        val renamed = createGitRepo("renamed-local")
+        val fork = createGitRepo("fork-repo")
+
+        val plan = CodexWorkspaceSyncService.buildPlan(
+            candidates = listOf(
+                CodexWorkspaceSyncService.Candidate(owned.absolutePath, "active-workspace-roots"),
+                CodexWorkspaceSyncService.Candidate(orgOwned.absolutePath, "active-workspace-roots"),
+                CodexWorkspaceSyncService.Candidate(noRemote.absolutePath, "active-workspace-roots"),
+                CodexWorkspaceSyncService.Candidate(renamed.absolutePath, "active-workspace-roots"),
+                CodexWorkspaceSyncService.Candidate(fork.absolutePath, "active-workspace-roots")
+            ),
+            existingRepoRoots = emptyList(),
+            workspaceProjectPath = null,
+            includeWorktrees = false,
+            githubOwner = "tannerpolley",
+            requireMatchingGitHubRemote = true,
+            listRemoteUrls = { root ->
+                when (root) {
+                    owned.absolutePath.replace('\\', '/') -> listOf("https://github.com/tannerpolley/owned-repo.git")
+                    orgOwned.absolutePath.replace('\\', '/') -> listOf("git@github.com:ePC-SAFT/ePC-SAFT.git")
+                    renamed.absolutePath.replace('\\', '/') -> listOf("https://github.com/tannerpolley/different-name.git")
+                    fork.absolutePath.replace('\\', '/') -> listOf("https://github.com/random-owner/fork-repo.git")
+                    else -> emptyList()
+                }
+            }
+        )
+
+        assertEquals(listOf(owned.absolutePath.replace('\\', '/')), plan.accepted.map { it.repoRootPath })
+        assertEquals(
+            listOf(
+                "github_remote_mismatch:ePC-SAFT/ePC-SAFT",
+                "github_remote_missing",
+                "github_remote_mismatch:tannerpolley/different-name",
+                "github_remote_mismatch:random-owner/fork-repo"
+            ),
+            plan.skipped.map { it.reason }
+        )
+    }
+
     fun testBuildPlanRequiresCanonicalGitHubRepoNameForGitHubRemotes() {
         val matching = createGitRepo("matching-repo")
         val renamed = createGitRepo("renamed-local")
@@ -259,6 +337,29 @@ class CodexWorkspaceSyncServiceUnitTest : TestCase() {
             CodexWorkspaceSyncService.githubRepoNameFromRemoteUrl("git@github.com:tannerpolley/jetbrains-bridge.git")
         )
         assertNull(CodexWorkspaceSyncService.githubRepoNameFromRemoteUrl("https://example.com/tannerpolley/repo.git"))
+    }
+
+    fun testListGitRemoteUrlsFallsBackToGitConfig() {
+        val repo = createGitRepo("config-remote")
+        File(repo, ".git/config").writeText(
+            """
+            [core]
+                repositoryformatversion = 0
+            [remote "origin"]
+                url = https://github.com/tannerpolley/config-remote.git
+                fetch = +refs/heads/*:refs/remotes/origin/*
+            [remote "backup"]
+                url = git@github.com:tannerpolley/config-remote.git
+            """.trimIndent()
+        )
+
+        assertEquals(
+            listOf(
+                "https://github.com/tannerpolley/config-remote.git",
+                "git@github.com:tannerpolley/config-remote.git"
+            ),
+            CodexWorkspaceSyncService.listGitRemoteUrls(repo.absolutePath)
+        )
     }
 
     fun testBuildPlanDoesNotAttachWorkspaceProjectRootAsRepo() {

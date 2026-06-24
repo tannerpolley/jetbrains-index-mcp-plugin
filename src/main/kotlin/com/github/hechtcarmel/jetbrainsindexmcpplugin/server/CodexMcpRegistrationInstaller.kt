@@ -25,7 +25,7 @@ object CodexMcpRegistrationInstaller {
     )
 
     fun buildPlan(
-        repoScopes: List<RepoScope> = RepoScopeRegistry.collectOpenRepoScopes(),
+        repoScopes: List<RepoScope> = RepoScopeRegistry.collectOpenIndexScopes(),
         broadStreamableHttpUrl: String = ClientConfigGenerator.getStreamableHttpUrl(),
         broadServerName: String = ClientConfigGenerator.getDefaultServerName()
     ): Plan {
