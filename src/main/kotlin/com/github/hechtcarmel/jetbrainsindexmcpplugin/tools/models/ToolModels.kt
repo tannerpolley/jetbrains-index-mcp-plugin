@@ -192,6 +192,22 @@ data class IndexStatusResult(
     val indexingProgress: Double?
 )
 
+@Serializable
+data class RepoScopedClientServer(
+    val name: String,
+    val url: String,
+    val repoId: String? = null,
+    val repoRootPath: String? = null
+)
+
+@Serializable
+data class RepoScopedClientConfigResult(
+    val client: String,
+    val servers: List<RepoScopedClientServer>,
+    val installCommands: List<String>,
+    val message: String
+)
+
 // ide_sync_files output
 @Serializable
 data class SyncFilesResult(

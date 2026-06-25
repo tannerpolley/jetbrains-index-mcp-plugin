@@ -20,6 +20,7 @@ import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.navigation.SearchTex
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.navigation.TypeHierarchyTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.GetIndexStatusTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.BuildProjectTool
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.GetRepoScopedClientConfigTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.SyncFilesTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.refactoring.MoveFileTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.refactoring.OptimizeImportsTool
@@ -129,14 +130,40 @@ class ToolsUnitTest : TestCase() {
         assertEquals(ToolNames.BUILD_PROJECT, tool?.name)
     }
 
-    fun testWorkspaceManagementToolsAreOwnedByWorkspaceManager() {
+    fun testRepoScopedClientConfigExportStaysOwnedByIndexMcp() {
+        val registry = ToolRegistry()
+        registry.registerBuiltInTools()
+
+        val tool = registry.getTool(ToolNames.GET_REPO_SCOPED_CLIENT_CONFIG)
+
+        assertNotNull("Index MCP must export repo-scoped endpoint URLs for currently open repos/modules", tool)
+        assertEquals(ToolNames.GET_REPO_SCOPED_CLIENT_CONFIG, tool?.name)
+        assertTrue(ToolNames.ALL.contains(ToolNames.GET_REPO_SCOPED_CLIENT_CONFIG))
+    }
+
+    fun testRepoScopedClientConfigToolSchema() {
+        val tool = GetRepoScopedClientConfigTool()
+
+        assertEquals(ToolNames.GET_REPO_SCOPED_CLIENT_CONFIG, tool.name)
+        assertNotNull(tool.description)
+
+        val schema = tool.inputSchema
+        assertEquals(SchemaConstants.TYPE_OBJECT, schema[SchemaConstants.TYPE]?.jsonPrimitive?.content)
+
+        val properties = schema[SchemaConstants.PROPERTIES]?.jsonObject
+        assertNotNull(properties)
+        assertNotNull("Should have project_path property", properties?.get(ParamNames.PROJECT_PATH))
+        assertNotNull("Should have client property", properties?.get(ParamNames.CLIENT))
+        assertNull("Should not have required array", schema[SchemaConstants.REQUIRED])
+    }
+
+    fun testWorkspaceMutationToolsAreOwnedByWorkspaceManager() {
         val registry = ToolRegistry()
         registry.registerBuiltInTools()
 
         val movedToolNames = listOf(
             "ide_attach_repo_to_workspace",
             "ide_detach_repo_from_workspace",
-            "ide_get_repo_scoped_client_config",
             "ide_install_repo_scoped_codex_config",
             "ide_sync_codex_workspace_repos"
         )

@@ -22,6 +22,7 @@ object ToolNames {
     const val INDEX_STATUS = "ide_index_status"
     const val SYNC_FILES = "ide_sync_files"
     const val BUILD_PROJECT = "ide_build_project"
+    const val GET_REPO_SCOPED_CLIENT_CONFIG = "ide_get_repo_scoped_client_config"
 
     // Refactoring tools
     const val REFACTOR_RENAME = "ide_refactor_rename"
@@ -62,6 +63,7 @@ object ToolNames {
         FIND_SUPER_METHODS,
         FIND_SYMBOL,
         GET_ACTIVE_FILE,
+        GET_REPO_SCOPED_CLIENT_CONFIG,
         INDEX_STATUS,
         INSTALL_PLUGIN,
         REFACTOR_MOVE,

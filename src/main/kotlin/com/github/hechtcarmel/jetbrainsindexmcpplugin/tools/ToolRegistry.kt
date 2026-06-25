@@ -17,6 +17,7 @@ import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.navigation.SearchTex
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.BuildProjectTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.CloseProjectTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.GetIndexStatusTool
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.GetRepoScopedClientConfigTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.InstallPluginTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.OpenProjectTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.project.RestartIdeTool
@@ -240,6 +241,7 @@ class ToolRegistry {
         register(GetIndexStatusTool())
         register(SyncFilesTool())
         register(BuildProjectTool())
+        register(GetRepoScopedClientConfigTool())
         register(InstallPluginTool())
         register(RestartIdeTool())
         register(SetPowerSaveModeTool())

@@ -1,5 +1,6 @@
 package com.github.hechtcarmel.jetbrainsindexmcpplugin.util
 
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.RepoScope
 import junit.framework.TestCase
 
 class ClientConfigGeneratorUnitTest : TestCase() {
@@ -423,6 +424,31 @@ class ClientConfigGeneratorUnitTest : TestCase() {
         )
         assertFalse("Windows command should not use POSIX /dev/null", command.contains("/dev/null"))
         assertFalse("Windows command should not use POSIX ; separators", command.contains(";"))
+    }
+
+    fun testBuildRepoScopedCodexCommandsIncludesBroadAndRepoEndpointsWithPlatformSyntax() {
+        val commands = ClientConfigGenerator.buildRepoScopedCodexCommands(
+            broadStreamableHttpUrl = "http://127.0.0.1:29170/index-mcp/streamable-http",
+            broadServerName = "intellij-index",
+            repoScopes = listOf(
+                RepoScope("jetbrains-bridge", "C:/Workspace/jetbrains-bridge", "C:/Workspace"),
+                RepoScope("ePC-SAFT", "C:/Workspace/ePC-SAFT", "C:/Workspace")
+            ),
+            platform = ClientConfigGenerator.CommandPlatform.WINDOWS
+        )
+
+        assertEquals(3, commands.size)
+        assertEquals(
+            "codex mcp remove intellij-index >NUL 2>&1 & " +
+                "codex mcp add intellij-index --url http://127.0.0.1:29170/index-mcp/streamable-http",
+            commands[0]
+        )
+        assertTrue(commands[1].contains("intellij-index-ePC-SAFT"))
+        assertTrue(commands[1].contains("http://127.0.0.1:29170/index-mcp/repos/ePC-SAFT/streamable-http"))
+        assertTrue(commands[2].contains("intellij-index-jetbrains-bridge"))
+        assertTrue(commands[2].contains("http://127.0.0.1:29170/index-mcp/repos/jetbrains-bridge/streamable-http"))
+        assertTrue(commands.all { it.contains(">NUL 2>&1 &") })
+        assertFalse(commands.any { it.contains("/dev/null") || it.contains(";") })
     }
 
     fun testBuildClaudeCodeCommandForWindowsUsesCmdCompatibleSyntax() {

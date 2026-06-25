@@ -33,6 +33,7 @@ object ParamNames {
     const val SCOPE = "scope"
 
     // Other parameters
+    const val CLIENT = "client"
     const val DIRECTION = "direction"
     const val MAX_RESULTS = "maxResults"
     const val FIX_ID = "fixId"

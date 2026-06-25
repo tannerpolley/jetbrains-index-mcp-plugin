@@ -1,6 +1,7 @@
 package com.github.hechtcarmel.jetbrainsindexmcpplugin.util
 
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.McpConstants
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.RepoScope
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.McpServerService
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.settings.McpSettings
 import com.intellij.openapi.util.SystemInfo
@@ -134,6 +135,23 @@ object ClientConfigGenerator {
         }
         return broadStreamableHttpUrl.removeSuffix(suffix) +
             McpConstants.repoScopedStreamableHttpEndpointPath(repoId)
+    }
+
+    fun buildRepoScopedCodexCommands(
+        broadStreamableHttpUrl: String,
+        broadServerName: String = getDefaultServerName(),
+        repoScopes: List<RepoScope>,
+        platform: CommandPlatform = currentCommandPlatform()
+    ): List<String> {
+        val commands = mutableListOf(buildCodexCommand(broadStreamableHttpUrl, broadServerName, platform))
+        for (scope in repoScopes.sortedBy { it.repoId }) {
+            commands += buildCodexCommand(
+                serverUrl = buildRepoScopedStreamableHttpUrl(broadStreamableHttpUrl, scope.repoId),
+                serverName = "$broadServerName-${scope.repoId}",
+                platform = platform
+            )
+        }
+        return commands
     }
 
     /**
