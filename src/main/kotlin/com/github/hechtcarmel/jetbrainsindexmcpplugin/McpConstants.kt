@@ -2,12 +2,15 @@ package com.github.hechtcarmel.jetbrainsindexmcpplugin
 
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.util.IdeProductInfo
 import com.intellij.util.messages.Topic
+import java.util.Properties
 
 object McpConstants {
     const val PLUGIN_NAME = "Index MCP Server"
     const val TOOL_WINDOW_ID = PLUGIN_NAME
     const val NOTIFICATION_GROUP_ID = PLUGIN_NAME
     const val SETTINGS_DISPLAY_NAME = PLUGIN_NAME
+    private const val SERVER_METADATA_RESOURCE = "META-INF/mcp-server.properties"
+    private const val SERVER_VERSION_PROPERTY = "version"
 
     // Server configuration - IDE-specific defaults
     const val DEFAULT_SERVER_HOST = "127.0.0.1"
@@ -54,7 +57,21 @@ object McpConstants {
      * Legacy constant for backwards compatibility.
      */
     const val SERVER_NAME = "jetbrains-index-mcp"
-    const val SERVER_VERSION = "4.10.4"
+
+    @JvmStatic
+    fun getServerVersion(): String {
+        val properties = McpConstants::class.java.classLoader
+            .getResourceAsStream(SERVER_METADATA_RESOURCE)
+            ?.use { stream ->
+                Properties().apply { load(stream) }
+            }
+            ?: error("Missing server metadata resource: $SERVER_METADATA_RESOURCE")
+
+        return properties.getProperty(SERVER_VERSION_PROPERTY)
+            ?.takeIf { it.isNotBlank() }
+            ?: error("Missing $SERVER_VERSION_PROPERTY in $SERVER_METADATA_RESOURCE")
+    }
+
     const val SERVER_DESCRIPTION = "Code intelligence server for JetBrains IDEs (IntelliJ, PyCharm, WebStorm, GoLand, PhpStorm, RustRover). Use this instead of grep/ripgrep for semantic code understanding. Capabilities: find usages, go to definition, type/call hierarchies, find implementations, symbol search, rename refactoring, safe delete, diagnostics. Languages: Java, Kotlin, Python, JavaScript, TypeScript, Go, PHP, Rust, and Markdown file structure. Prerequisite: project must be open in IDE. Note: refactoring tools modify source files."
 
     /**

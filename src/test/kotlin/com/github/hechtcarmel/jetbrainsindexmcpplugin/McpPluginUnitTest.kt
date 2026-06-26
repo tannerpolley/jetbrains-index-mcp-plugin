@@ -10,6 +10,8 @@ import junit.framework.TestCase
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
+import java.io.File
+import java.util.Properties
 
 class McpPluginUnitTest : TestCase() {
 
@@ -67,5 +69,22 @@ class McpPluginUnitTest : TestCase() {
         assertEquals(-32601, JsonRpcErrorCodes.METHOD_NOT_FOUND)
         assertEquals(-32602, JsonRpcErrorCodes.INVALID_PARAMS)
         assertEquals(-32603, JsonRpcErrorCodes.INTERNAL_ERROR)
+    }
+
+    fun testServerVersionComesFromGradlePluginVersion() {
+        val gradleProperties = Properties().apply {
+            projectFile("gradle.properties").inputStream().use(::load)
+        }
+
+        assertEquals(gradleProperties.getProperty("pluginVersion"), McpConstants.getServerVersion())
+    }
+
+    private fun projectFile(path: String): File {
+        val start = File(System.getProperty("user.dir")).absoluteFile
+        val projectRoot = generateSequence(start) { it.parentFile }
+            .firstOrNull { File(it, "settings.gradle.kts").isFile }
+            ?: error("Could not locate project root from ${start.path}")
+
+        return File(projectRoot, path)
     }
 }

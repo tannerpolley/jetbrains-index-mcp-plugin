@@ -94,7 +94,7 @@ class JsonRpcHandler @JvmOverloads constructor(
             protocolVersion = protocolVersion,
             serverInfo = ServerInfo(
                 name = McpConstants.SERVER_NAME,
-                version = McpConstants.SERVER_VERSION,
+                version = McpConstants.getServerVersion(),
                 description = McpConstants.SERVER_DESCRIPTION
             ),
             capabilities = ServerCapabilities(

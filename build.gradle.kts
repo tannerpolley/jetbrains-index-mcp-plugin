@@ -1,3 +1,9 @@
+import org.gradle.api.DefaultTask
+import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.OutputFile
+import org.gradle.api.tasks.TaskAction
 import org.jetbrains.changelog.Changelog
 import org.jetbrains.changelog.markdownToHTML
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
@@ -13,8 +19,24 @@ plugins {
     alias(libs.plugins.kover) // Gradle Kover Plugin
 }
 
+abstract class GenerateMcpServerMetadata : DefaultTask() {
+    @get:Input
+    abstract val pluginVersion: Property<String>
+
+    @get:OutputFile
+    abstract val outputFile: RegularFileProperty
+
+    @TaskAction
+    fun generate() {
+        val file = outputFile.get().asFile
+        file.parentFile.mkdirs()
+        file.writeText("version=${pluginVersion.get()}\n")
+    }
+}
+
 group = providers.gradleProperty("pluginGroup").get()
-version = providers.gradleProperty("pluginVersion").get()
+val pluginVersionValue = providers.gradleProperty("pluginVersion").get()
+version = pluginVersionValue
 
 // Set the JVM language level used to build the project.
 kotlin {
@@ -213,5 +235,16 @@ intellijPlatformTesting {
                 robotServerPlugin()
             }
         }
+    }
+}
+
+val generateMcpServerMetadata by tasks.registering(GenerateMcpServerMetadata::class) {
+    pluginVersion.set(providers.gradleProperty("pluginVersion"))
+    outputFile.set(layout.buildDirectory.file("generated/mcpServerMetadata/mcp-server.properties"))
+}
+
+tasks.processResources {
+    from(generateMcpServerMetadata.flatMap { it.outputFile }) {
+        into("META-INF")
     }
 }

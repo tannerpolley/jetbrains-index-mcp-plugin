@@ -3,6 +3,8 @@
 # IDE Index MCP Server Changelog
 
 ## [Unreleased]
+### Fixed
+- Sourced the MCP server version from Gradle plugin metadata so initialize responses stay aligned with `pluginVersion`.
 
 ## [4.22.0] - 2026-06-12
 ### Added
