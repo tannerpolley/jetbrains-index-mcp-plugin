@@ -5,6 +5,7 @@ import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.TaskAction
 import org.jetbrains.changelog.Changelog
+import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import org.jetbrains.changelog.markdownToHTML
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 import org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask
@@ -219,6 +220,23 @@ tasks {
 
 intellijPlatformTesting {
     runIde {
+        register("runClionSmoke") {
+            type = IntelliJPlatformType.CLion
+            version = providers.gradleProperty("platformVersion").get()
+
+            task {
+                args(layout.buildDirectory.dir("clion-smoke-project").get().asFile.absolutePath)
+                jvmArgumentProviders += CommandLineArgumentProvider {
+                    listOf(
+                        "-Didea.trust.all.projects=true",
+                        "-Dide.show.tips.on.startup.default.value=false",
+                        "-Djb.privacy.policy.text=<!--999.999-->",
+                        "-Djb.consents.confirmation.enabled=false",
+                    )
+                }
+            }
+        }
+
         register("runIdeForUiTests") {
             task {
                 jvmArgumentProviders += CommandLineArgumentProvider {

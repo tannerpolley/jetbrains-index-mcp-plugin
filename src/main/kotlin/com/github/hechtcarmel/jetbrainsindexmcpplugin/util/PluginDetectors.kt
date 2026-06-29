@@ -37,6 +37,19 @@ object PluginDetectors {
         fallbackClass = "org.rust.lang.core.psi.RsFile"
     )
 
+    val cpp = PluginDetector(
+        name = "C/C++",
+        pluginIds = listOf(
+            "org.jetbrains.plugins.clion.radler",
+            "com.intellij.cidr.lang.clangd",
+            "com.intellij.cidr.lang",
+            "com.intellij.clion",
+            "com.intellij.modules.cidr.lang"
+        ),
+        fallbackClass = "com.jetbrains.rider.cpp.fileType.CppSourceFileType",
+        fallbackClasses = listOf("com.intellij.cidr.lang.psi.OCFile")
+    )
+
     val markdown = PluginDetector(
         name = "Markdown",
         pluginIds = listOf("org.intellij.plugins.markdown"),

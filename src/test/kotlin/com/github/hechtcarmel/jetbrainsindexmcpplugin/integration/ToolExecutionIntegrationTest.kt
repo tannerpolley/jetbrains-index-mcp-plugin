@@ -483,6 +483,7 @@ class ToolExecutionIntegrationTest : BasePlatformTestCase() {
             ToolNames.DIAGNOSTICS,
             // Project tools
             ToolNames.BUILD_PROJECT,
+            ToolNames.GET_REPO_SCOPED_CLIENT_CONFIG,
             ToolNames.INDEX_STATUS,
             ToolNames.SYNC_FILES,
             // Refactoring tools

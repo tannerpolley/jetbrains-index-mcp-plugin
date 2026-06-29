@@ -3,8 +3,12 @@
 # IDE Index MCP Server Changelog
 
 ## [Unreleased]
+### Added
+- Added optional C/C++ file-structure support for CLion via the classic CIDR and current Radler C/C++ language engines.
+
 ### Fixed
 - Sourced the MCP server version from Gradle plugin metadata so initialize responses stay aligned with `pluginVersion`.
+- Restored the endpoint inventory URL dropdown in the tool window while keeping expandable endpoint details.
 
 ## [4.22.0] - 2026-06-12
 ### Added

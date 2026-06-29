@@ -7,9 +7,11 @@ import com.intellij.openapi.extensions.PluginId
 class PluginDetector(
     val name: String,
     private val pluginIds: List<String>,
-    private val fallbackClass: String? = null
+    fallbackClass: String? = null,
+    fallbackClasses: List<String> = emptyList()
 ) {
     private val log = logger<PluginDetector>()
+    private val fallbackClassNames = (listOfNotNull(fallbackClass) + fallbackClasses).distinct()
 
     val isAvailable: Boolean by lazy { checkAvailable() }
 
@@ -32,7 +34,7 @@ class PluginDetector(
             }
         }
 
-        if (fallbackClass != null) {
+        for (fallbackClass in fallbackClassNames) {
             try {
                 Class.forName(fallbackClass)
                 log.info("$name support detected via PSI class ($fallbackClass)")

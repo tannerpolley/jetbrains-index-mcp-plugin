@@ -9,6 +9,7 @@ import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import kotlinx.serialization.json.buildJsonObject
 import javax.swing.DefaultListModel
 import javax.swing.JButton
+import javax.swing.JComboBox
 
 class McpToolWindowPanelTest : BasePlatformTestCase() {
 
@@ -74,33 +75,38 @@ class McpToolWindowPanelTest : BasePlatformTestCase() {
         }
     }
 
-    fun testEndpointInventoryPanelDefaultsToCollapsedSummary() {
+    fun testEndpointInventoryPanelShowsEndpointDropdownAndCollapsedDetails() {
         val endpointPanel = EndpointInventoryPanel()
         endpointPanel.setRows(sampleEndpointRows())
 
-        val toggle = findComponent(endpointPanel, JButton::class.java)
+        val comboBox = findComponent(endpointPanel, JComboBox::class.java)
+        val toggle = findButton(endpointPanel) { it.text.startsWith("> Endpoint details:") }
 
-        assertNotNull("Endpoint inventory should expose a compact toggle", toggle)
-        assertFalse("Endpoint rows should be collapsed by default", endpointPanel.isExpandedForTest())
-        assertEquals("> Endpoints: 1 workspace, 2 repos", toggle!!.text)
+        assertNotNull("Endpoint inventory should expose an endpoint URL dropdown", comboBox)
+        assertEquals("Endpoint dropdown should include workspace and repo URLs", 3, comboBox!!.itemCount)
+        assertEquals("Workspace", (comboBox.getItemAt(0) as EndpointInventoryRow).scopeName)
+        assertEquals("ePC-SAFT", (comboBox.getItemAt(1) as EndpointInventoryRow).scopeName)
+        assertNotNull("Endpoint inventory should expose compact details toggle", toggle)
+        assertFalse("Endpoint detail rows should be collapsed by default", endpointPanel.isExpandedForTest())
+        assertEquals("> Endpoint details: 1 workspace, 2 repos", toggle!!.text)
     }
 
     fun testEndpointInventoryPanelTogglesExpandedRows() {
         val endpointPanel = EndpointInventoryPanel()
         endpointPanel.setRows(sampleEndpointRows())
-        val toggle = findComponent(endpointPanel, JButton::class.java)!!
+        val toggle = findButton(endpointPanel) { it.text.startsWith("> Endpoint details:") }!!
 
         toggle.doClick()
         dispatchUiEvents()
 
         assertTrue("Endpoint rows should expand after toggle click", endpointPanel.isExpandedForTest())
-        assertEquals("v Endpoints: 1 workspace, 2 repos", toggle.text)
+        assertEquals("v Endpoint details: 1 workspace, 2 repos", toggle.text)
 
         toggle.doClick()
         dispatchUiEvents()
 
         assertFalse("Endpoint rows should collapse after second toggle click", endpointPanel.isExpandedForTest())
-        assertEquals("> Endpoints: 1 workspace, 2 repos", toggle.text)
+        assertEquals("> Endpoint details: 1 workspace, 2 repos", toggle.text)
     }
 
     private fun applyFilter(panel: McpToolWindowPanel, filter: CommandFilter) {
@@ -159,6 +165,21 @@ class McpToolWindowPanelTest : BasePlatformTestCase() {
             }
             if (component is java.awt.Container) {
                 val nested = findComponent(component, type)
+                if (nested != null) {
+                    return nested
+                }
+            }
+        }
+        return null
+    }
+
+    private fun findButton(root: java.awt.Container, predicate: (JButton) -> Boolean): JButton? {
+        for (component in root.components) {
+            if (component is JButton && predicate(component)) {
+                return component
+            }
+            if (component is java.awt.Container) {
+                val nested = findButton(component, predicate)
                 if (nested != null) {
                     return nested
                 }
