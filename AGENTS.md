@@ -269,6 +269,14 @@ override val inputSchema = SchemaBuilder.tool()
 ./gradlew runPluginVerifier
 ```
 
+### Live Workspace Update Requirement
+
+When plugin code or UI changes are made, the task is not complete until the updated plugin is installed into the current stable IntelliJ workspace window and loaded there:
+1. Build the plugin zip with `./gradlew buildPlugin`.
+2. Install the zip into the running workspace IDE with `ide_install_plugin` or the equivalent local install path.
+3. Restart the workspace IDE so the new plugin loads.
+4. Verify the live MCP `initialize` response or visible tool-window behavior from that workspace window.
+
 ### Run Configurations (in `.run/`)
 - **Run Plugin** - Launch IDE with plugin for manual testing
 - **Run Tests** - Execute unit tests
