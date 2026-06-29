@@ -5,6 +5,7 @@
 ## [Unreleased]
 ### Added
 - Added optional C/C++ file-structure support for CLion via the classic CIDR and current Radler C/C++ language engines.
+- Added a localhost-only MCP debug page at `/index-mcp/debug` with endpoint inventory and direct JSON-RPC request testing.
 
 ### Fixed
 - Sourced the MCP server version from Gradle plugin metadata so initialize responses stay aligned with `pluginVersion`.

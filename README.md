@@ -356,6 +356,16 @@ Only Git repo roots are published as repo-scoped agent identities. Aggregate wor
 
 Repo-scoped endpoints pin `project_path` to the repo root. A conflicting `project_path` returns `repo_scope_conflict`. The currently repo-safe tools are `ide_index_status`, `ide_find_file`, `ide_search_text`, `ide_file_structure`, `ide_read_file`, and `ide_open_file`; `ide_find_definition`, `ide_find_symbol`, `ide_find_implementations`, `ide_call_hierarchy`, and `ide_type_hierarchy` are rejected on repo-scoped endpoints until sub-root semantic scoping is proven.
 
+### Browser Debug Page
+
+For local plugin development, open:
+
+```text
+http://127.0.0.1:<port>/index-mcp/debug
+```
+
+The debug page is loopback-only and shows the same workspace/repo endpoint inventory as the tool window. It can send `initialize`, `tools/list`, and editable JSON-RPC requests through the active Streamable HTTP endpoint.
+
 ## Tool Window
 
 The plugin adds an "Index MCP Server" tool window (bottom panel) that shows:

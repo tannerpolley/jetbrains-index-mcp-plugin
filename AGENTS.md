@@ -161,6 +161,10 @@ MCP servers expose:
 - `GET /index-mcp/sse` → Opens SSE stream, sends `endpoint` event with POST URL
 - `POST /index-mcp` → JSON-RPC requests/responses
 
+*Local Debug Surface:*
+- `GET /index-mcp/debug` → Localhost-only browser page for endpoint inventory and JSON-RPC smoke tests
+- `GET /index-mcp/debug/state` → Localhost-only JSON state used by the debug page
+
 **Client Configuration** (Cursor, Codex Desktop, etc.):
 ```json
 {

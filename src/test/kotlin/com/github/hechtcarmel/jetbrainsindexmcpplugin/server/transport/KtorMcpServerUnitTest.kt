@@ -211,6 +211,55 @@ class KtorMcpServerUnitTest : TestCase() {
         assertEquals(HttpStatusCode.Forbidden.value, response.statusCode())
     }
 
+    fun testDebugPageIsServedForLoopback() {
+        val response = sendRequest(
+            method = "GET",
+            path = KtorDebugPage.DEBUG_PATH
+        )
+
+        assertEquals(HttpStatusCode.OK.value, response.statusCode())
+        assertTrue(
+            response.headers().firstValue("content-type").orElse("").startsWith("text/html")
+        )
+        assertTrue(response.body().contains("Index MCP Debug"))
+    }
+
+    fun testDebugStateIncludesEndpointInventory() {
+        val response = sendRequest(
+            method = "GET",
+            path = KtorDebugPage.STATE_PATH
+        )
+
+        assertEquals(HttpStatusCode.OK.value, response.statusCode())
+
+        val responseBody = json.parseToJsonElement(response.body()).jsonObject
+        val serverState = responseBody["server"]!!.jsonObject
+        assertEquals("127.0.0.1", serverState["host"]!!.jsonPrimitive.content)
+        assertEquals(port.toString(), serverState["port"]!!.jsonPrimitive.content)
+        assertEquals(
+            "http://127.0.0.1:$port${McpConstants.STREAMABLE_HTTP_ENDPOINT_PATH}",
+            serverState["streamableHttpUrl"]!!.jsonPrimitive.content
+        )
+
+        val endpoints = responseBody["endpoints"]!!.jsonArray
+        assertTrue(endpoints.isNotEmpty())
+        assertEquals("workspace", endpoints[0].jsonObject["id"]!!.jsonPrimitive.content)
+        assertEquals(
+            "http://127.0.0.1:$port${McpConstants.STREAMABLE_HTTP_ENDPOINT_PATH}",
+            endpoints[0].jsonObject["url"]!!.jsonPrimitive.content
+        )
+    }
+
+    fun testDebugPageRejectsNonLocalOrigin() {
+        val response = sendRequest(
+            method = "GET",
+            path = KtorDebugPage.DEBUG_PATH,
+            headers = mapOf("Origin" to "https://evil.example")
+        )
+
+        assertEquals(HttpStatusCode.Forbidden.value, response.statusCode())
+    }
+
     fun testAcceptsIpv6LoopbackOrigin() {
         val response = sendRequest(
             method = "POST",

@@ -6,15 +6,19 @@ import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.RepoScope
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.RepoScopeRegistry
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.models.JsonRpcError
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.models.JsonRpcResponse
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.ui.EndpointInventoryModel
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.ui.EndpointInventoryState
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.asContextElement
 import com.intellij.openapi.diagnostic.logger
+import com.intellij.openapi.project.ProjectManager
 import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.cio.*
 import io.ktor.server.engine.*
+import io.ktor.server.plugins.origin
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
@@ -147,6 +151,27 @@ class KtorMcpServer(
 
             options(McpConstants.SSE_ENDPOINT_PATH) {
                 handleCorsPreflight(call)
+            }
+
+            options(KtorDebugPage.STATE_PATH) {
+                handleCorsPreflight(call)
+            }
+
+            // === Local development debug surface ===
+
+            get(KtorDebugPage.DEBUG_PATH) {
+                if (!validateDebugRequest(call)) return@get
+                call.response.header(HttpHeaders.CacheControl, "no-store")
+                call.respondText(KtorDebugPage.html(), ContentType.Text.Html)
+            }
+
+            get(KtorDebugPage.STATE_PATH) {
+                if (!validateDebugRequest(call)) return@get
+                call.response.header(HttpHeaders.CacheControl, "no-store")
+                val state = runWithIdeModality {
+                    buildDebugState()
+                }
+                call.respondText(json.encodeToString(state), ContentType.Application.Json)
             }
 
             // === Streamable HTTP Transport (2025-03-26 spec) ===
@@ -503,6 +528,42 @@ class KtorMcpServer(
         return repoScope
     }
 
+    private fun buildDebugState(): JsonObject {
+        val application = ApplicationManager.getApplication()
+        val openProjects = if (application == null) {
+            emptyList()
+        } else {
+            ProjectManager.getInstance().openProjects
+                .filter { !it.isDefault }
+        }
+        val workspaceProject = openProjects.firstOrNull()
+        val broadStreamableHttpUrl = "http://$host:$port${McpConstants.STREAMABLE_HTTP_ENDPOINT_PATH}"
+        val endpointRows = EndpointInventoryModel.buildRows(
+            broadStreamableHttpUrl = broadStreamableHttpUrl,
+            projectName = workspaceProject?.name ?: "No open project",
+            workspaceProjectPath = workspaceProject?.basePath,
+            repoScopes = RepoScopeRegistry.collectOpenIndexScopes(),
+            serverState = if (isRunning()) EndpointInventoryState.RUNNING else EndpointInventoryState.OFFLINE
+        )
+        val projects = openProjects.map { project ->
+            DebugProjectState(
+                name = project.name,
+                basePath = project.basePath.orEmpty()
+            )
+        }
+
+        return KtorDebugPage.buildState(
+            serverName = McpConstants.getServerName(),
+            serverVersion = McpConstants.getServerVersion(),
+            protocolVersion = McpConstants.STREAMABLE_HTTP_MCP_PROTOCOL_VERSION,
+            host = host,
+            port = port,
+            serverRunning = isRunning(),
+            endpointRows = endpointRows,
+            projects = projects
+        )
+    }
+
     /**
      * Handles POST in Streamable HTTP mode (no sessionId).
      * Returns immediate JSON response.
@@ -643,6 +704,21 @@ class KtorMcpServer(
         return false
     }
 
+    private suspend fun validateDebugRequest(call: ApplicationCall): Boolean {
+        if (!validateOrigin(call)) {
+            return false
+        }
+
+        val remoteHost = normalizeOriginHost(call.request.origin.remoteHost.lowercase())
+        if (isLoopbackHost(remoteHost)) {
+            return true
+        }
+
+        LOG.warn("Rejected debug page request from non-loopback remote host: $remoteHost")
+        call.respondText("Debug page is only available from loopback clients", status = HttpStatusCode.Forbidden)
+        return false
+    }
+
     private fun setCorsResponseHeaders(call: ApplicationCall, origin: String) {
         call.response.header(HttpHeaders.AccessControlAllowOrigin, origin)
         call.response.header(HttpHeaders.Vary, HttpHeaders.Origin)
@@ -658,6 +734,14 @@ class KtorMcpServer(
         val scheme = uri.scheme?.lowercase() ?: return false
         val host = normalizeOriginHost(uri.host?.lowercase() ?: return false)
         return scheme in setOf("http", "https") && host in setOf("127.0.0.1", "localhost", "::1")
+    }
+
+    private fun isLoopbackHost(host: String): Boolean {
+        val normalizedHost = normalizeOriginHost(host)
+        return normalizedHost == "localhost" ||
+            normalizedHost == "::1" ||
+            normalizedHost == "0:0:0:0:0:0:0:1" ||
+            normalizedHost.startsWith("127.")
     }
 
     private fun isJsonRpcResponseMessage(parsed: JsonObject): Boolean {
