@@ -156,6 +156,7 @@ MCP servers expose:
 - `POST /index-mcp/streamable-http` → Stateless JSON-RPC requests/responses
 - `GET /index-mcp/streamable-http` → 405 Method Not Allowed
 - `DELETE /index-mcp/streamable-http` → 405 Method Not Allowed
+- `POST /index-mcp/repos/<repo-id>/streamable-http` → Repo/manual-root scoped JSON-RPC for registered workspace roots
 
 *Legacy SSE (MCP 2024-11-05):*
 - `GET /index-mcp/sse` → Opens SSE stream, sends `endpoint` event with POST URL
@@ -178,6 +179,8 @@ MCP servers expose:
 Note: Server name and port are IDE-specific. Use the "Install on Coding Agents" button for automatic configuration.
 
 **Port Configuration**: Settings → Tools → Index MCP Server → Server Port (IDE-specific defaults, range: 1024-65535)
+
+**Repo-Scoped Routes**: `RepoScopeRegistry` resolves repo-scoped routes from open Git content roots, manually registered roots, and workspace sidecar `.iml` content roots such as `.codex` and `.agents`. These routes must serve live HTTP requests at `/index-mcp/repos/<repo-id>/streamable-http`; generated client config must not advertise a route that the Ktor server cannot resolve. Repo-safe search tools, including `ide_find_file`, must filter results to the active repo/manual root before returning paths.
 
 **IDE-Specific Defaults**:
 | IDE | Server Name | Default Port |

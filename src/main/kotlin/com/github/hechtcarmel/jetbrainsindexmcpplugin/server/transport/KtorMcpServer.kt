@@ -60,7 +60,8 @@ class KtorMcpServer(
     private val host: String = McpConstants.DEFAULT_SERVER_HOST,
     private val jsonRpcHandler: JsonRpcHandler,
     private val sseSessionManager: KtorSseSessionManager,
-    private val coroutineScope: CoroutineScope
+    private val coroutineScope: CoroutineScope,
+    private val repoScopeResolver: (String) -> RepoScope? = RepoScopeRegistry::resolveOpenIndexScope
 ) : Disposable {
 
     private var server: EmbeddedServer<CIOApplicationEngine, CIOApplicationEngine.Configuration>? = null
@@ -519,7 +520,7 @@ class KtorMcpServer(
             return null
         }
 
-        val repoScope = RepoScopeRegistry.resolveOpenIndexScope(repoId)
+        val repoScope = repoScopeResolver(repoId)
         if (repoScope == null) {
             call.respond(HttpStatusCode.NotFound, "Unknown repo-scoped MCP route: $repoId")
             return null

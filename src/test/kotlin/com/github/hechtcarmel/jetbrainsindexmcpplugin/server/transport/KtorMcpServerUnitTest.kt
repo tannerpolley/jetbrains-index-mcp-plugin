@@ -2,6 +2,7 @@ package com.github.hechtcarmel.jetbrainsindexmcpplugin.server.transport
 
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.McpConstants
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.JsonRpcHandler
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.RepoScope
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolRegistry
 import io.ktor.http.HttpStatusCode
 import junit.framework.TestCase
@@ -319,12 +320,54 @@ class KtorMcpServerUnitTest : TestCase() {
         assertEquals(HttpStatusCode.OK.value, response.statusCode())
     }
 
-    private fun createServer(port: Int): KtorMcpServer {
+    fun testRepoScopedStreamableRouteServesKnownRepoScope() {
+        server.stop()
+
+        port = findFreePort()
+        server = createServer(port) { repoId ->
+            if (repoId == "jetbrains-bridge") {
+                RepoScope(
+                    repoId = "jetbrains-bridge",
+                    repoRootPath = "C:/Users/Tanner/Documents/Workspaces/Projects/jetbrains-bridge",
+                    workspaceProjectPath = "C:/Users/Tanner/Documents/Workspaces/Workspace"
+                )
+            } else {
+                null
+            }
+        }
+        assertEquals(KtorMcpServer.StartResult.Success, server.start())
+
+        val response = sendRequest(
+            method = "POST",
+            path = "${McpConstants.MCP_ENDPOINT_PATH}/repos/jetbrains-bridge/streamable-http",
+            body = """{"jsonrpc":"2.0","id":1,"method":"ping"}"""
+        )
+
+        assertEquals(HttpStatusCode.OK.value, response.statusCode())
+        val responseBody = json.parseToJsonElement(response.body()).jsonObject
+        assertNotNull(responseBody["result"])
+    }
+
+    fun testRepoScopedStreamableRouteRejectsUnknownRepoScope() {
+        val response = sendRequest(
+            method = "POST",
+            path = "${McpConstants.MCP_ENDPOINT_PATH}/repos/missing/streamable-http",
+            body = """{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}"""
+        )
+
+        assertEquals(HttpStatusCode.NotFound.value, response.statusCode())
+    }
+
+    private fun createServer(
+        port: Int,
+        repoScopeResolver: (String) -> RepoScope? = { null }
+    ): KtorMcpServer {
         return KtorMcpServer(
             port = port,
             jsonRpcHandler = JsonRpcHandler(toolRegistry),
             sseSessionManager = sseSessionManager,
-            coroutineScope = coroutineScope
+            coroutineScope = coroutineScope,
+            repoScopeResolver = repoScopeResolver
         )
     }
 

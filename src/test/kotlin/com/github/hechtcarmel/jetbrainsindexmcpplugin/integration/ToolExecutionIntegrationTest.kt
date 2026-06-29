@@ -1,6 +1,8 @@
 package com.github.hechtcarmel.jetbrainsindexmcpplugin.integration
 
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.constants.ToolNames
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.PathScopeContext
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.RepoScopeRegistry
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.models.ContentBlock
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.ToolRegistry
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.intelligence.GetDiagnosticsTool
@@ -22,12 +24,14 @@ import com.intellij.openapi.roots.ModuleRootModificationUtil
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiManager
+import com.intellij.testFramework.PsiTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
 import javax.tools.ToolProvider
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.buildJsonObject
@@ -257,6 +261,50 @@ class ToolExecutionIntegrationTest : BasePlatformTestCase() {
             "External library paths should remain absolute",
             libraryFile.toString().replace('\\', '/'),
             match!!.path
+        )
+    }
+
+    fun testFindFileToolPathScopeRestrictsDuplicateFileNamesToRequestedRoot() = runBlocking {
+        if (DumbService.isDumb(project)) return@runBlocking
+
+        val scopedRoot = Files.createTempDirectory("jetbrains-index-mcp-scoped-root")
+        val siblingRoot = Files.createTempDirectory("jetbrains-index-mcp-sibling-root")
+        val fileName = "ScopedOnly${System.nanoTime().toString().takeLast(8)}.txt"
+
+        Files.writeString(scopedRoot.resolve(fileName), "inside requested root")
+        Files.createDirectories(siblingRoot.resolve(".codex-cache"))
+        Files.writeString(siblingRoot.resolve(".codex-cache").resolve(fileName), "outside requested root")
+
+        val scopedRootVFile = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(scopedRoot)
+        val siblingRootVFile = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(siblingRoot)
+        assertNotNull("Scoped root should resolve in VFS", scopedRootVFile)
+        assertNotNull("Sibling root should resolve in VFS", siblingRootVFile)
+
+        PsiTestUtil.addContentRoot(module, scopedRootVFile!!)
+        PsiTestUtil.addContentRoot(module, siblingRootVFile!!)
+        DumbService.getInstance(project).waitForSmartMode()
+
+        val tool = FindFileTool()
+        val scopedRootPath = RepoScopeRegistry.normalizeRepoRootPath(scopedRoot.toString())
+        val result = withContext(PathScopeContext.asContextElement(scopedRootPath)) {
+            tool.execute(project, buildJsonObject {
+                put("query", fileName)
+                put("scope", "project_files")
+                put("pageSize", 50)
+            })
+        }
+
+        assertFalse("Scoped file search should succeed: ${result.content}", result.isError)
+        val content = result.content.first() as ContentBlock.Text
+        val matches = json.decodeFromString<FindFileResult>(content.text)
+
+        assertTrue(
+            "Expected the file inside the requested root",
+            matches.files.any { it.name == fileName && it.path == fileName }
+        )
+        assertFalse(
+            "File search must not leak sibling .codex cache hits when a path scope is active",
+            matches.files.any { it.path.contains(".codex-cache") || it.path.contains("sibling-root") }
         )
     }
 

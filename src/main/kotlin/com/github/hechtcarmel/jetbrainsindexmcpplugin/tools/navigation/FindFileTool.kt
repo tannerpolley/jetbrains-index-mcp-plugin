@@ -5,7 +5,10 @@ import com.github.hechtcarmel.jetbrainsindexmcpplugin.constants.ToolNames
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.BuiltInSearchScope
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.handlers.BuiltInSearchScopeResolver
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.PaginationService
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.PathScopeContext
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.ProjectResolver
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.RepoScopeContext
+import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.RepoScopeRegistry
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.server.models.ToolCallResult
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.AbstractMcpTool
 import com.github.hechtcarmel.jetbrainsindexmcpplugin.tools.models.FileMatch
@@ -115,10 +118,12 @@ class FindFileTool : AbstractMcpTool() {
 
         requireSmartMode(project)
 
+        val effectiveRootScopePath = currentEffectiveRootScopePath()
+
         val cursorToken = suspendingReadAction {
             val searchScope = resolveSearchScope(project, scope, excludeGenerated)
             val matcher = createMatcher(query)
-            val files = searchFiles(project, query, searchScope, scope, collectLimit, matcher)
+            val files = searchFiles(project, query, searchScope, scope, collectLimit, matcher, effectiveRootScopePath)
 
             val sortedFiles = files
                 .distinctBy { it.path }
@@ -126,7 +131,7 @@ class FindFileTool : AbstractMcpTool() {
 
             val searchExtender: suspend (Set<String>, Int) -> List<PaginationService.SerializedResult> = { seenKeys, limit ->
                 suspendingReadAction {
-                    extendSearchFiles(project, query, scope, seenKeys, limit, excludeGenerated)
+                    extendSearchFiles(project, query, scope, seenKeys, limit, excludeGenerated, effectiveRootScopePath)
                 }
             }
 
@@ -176,11 +181,12 @@ class FindFileTool : AbstractMcpTool() {
         scope: BuiltInSearchScope,
         seenKeys: Set<String>,
         limit: Int,
-        excludeGenerated: Boolean
+        excludeGenerated: Boolean,
+        effectiveRootScopePath: String?
     ): List<PaginationService.SerializedResult> {
         val searchScope = resolveSearchScope(project, scope, excludeGenerated)
         val matcher = createMatcher(query)
-        val files = searchFiles(project, query, searchScope, scope, limit + seenKeys.size, matcher)
+        val files = searchFiles(project, query, searchScope, scope, limit + seenKeys.size, matcher, effectiveRootScopePath)
 
         return files
             .distinctBy { it.path }
@@ -204,7 +210,8 @@ class FindFileTool : AbstractMcpTool() {
         searchScope: GlobalSearchScope,
         scope: BuiltInSearchScope,
         limit: Int,
-        matcher: MinusculeMatcher
+        matcher: MinusculeMatcher,
+        effectiveRootScopePath: String?
     ): List<FileMatch> {
         val results = mutableListOf<FileMatch>()
         val seen = mutableSetOf<String>()
@@ -216,7 +223,7 @@ class FindFileTool : AbstractMcpTool() {
             if (results.size >= limit) break
 
             try {
-                processContributor(contributor, project, pattern, searchScope, scope, limit, matcher, results, seen)
+                processContributor(contributor, project, pattern, searchScope, scope, limit, matcher, effectiveRootScopePath, results, seen)
             } catch (e: Exception) {
                 LOG.debug("Contributor ${contributor.javaClass.simpleName} failed for pattern '$pattern'", e)
             }
@@ -233,6 +240,7 @@ class FindFileTool : AbstractMcpTool() {
         scope: BuiltInSearchScope,
         limit: Int,
         matcher: MinusculeMatcher,
+        effectiveRootScopePath: String?,
         results: MutableList<FileMatch>,
         seen: MutableSet<String>
     ) {
@@ -260,7 +268,7 @@ class FindFileTool : AbstractMcpTool() {
                     { item ->
                         if (results.size >= limit) return@processElementsWithName false
 
-                        val fileMatch = convertToFileMatch(item, project, searchScope)
+                        val fileMatch = convertToFileMatch(item, project, searchScope, effectiveRootScopePath)
                         if (fileMatch != null) {
                             val key = fileMatch.path
                             if (key !in seen) {
@@ -285,7 +293,7 @@ class FindFileTool : AbstractMcpTool() {
                 for (item in items) {
                     if (results.size >= limit) break
 
-                    val fileMatch = convertToFileMatch(item, project, searchScope)
+                    val fileMatch = convertToFileMatch(item, project, searchScope, effectiveRootScopePath)
                     if (fileMatch != null) {
                         val key = fileMatch.path
                         if (key !in seen) {
@@ -302,14 +310,27 @@ class FindFileTool : AbstractMcpTool() {
         return BuiltInSearchScopeResolver.resolveGlobalScope(project, scope, excludeGenerated)
     }
 
-
-
-    private fun convertToFileMatch(item: NavigationItem, project: Project, scope: GlobalSearchScope): FileMatch? {
+    private fun convertToFileMatch(
+        item: NavigationItem,
+        project: Project,
+        scope: GlobalSearchScope,
+        effectiveRootScopePath: String?
+    ): FileMatch? {
         val virtualFile = extractVirtualFile(item) ?: return null
         if (!scope.contains(virtualFile)) return null
 
-        val relativePath = ProjectUtils.getToolFilePath(project, virtualFile)
-        val directory = virtualFile.parent?.let { ProjectUtils.getToolFilePath(project, it) } ?: ""
+        val relativePath = if (effectiveRootScopePath == null) {
+            ProjectUtils.getToolFilePath(project, virtualFile)
+        } else {
+            RepoScopeRegistry.relativePathInScope(effectiveRootScopePath, virtualFile.path) ?: return null
+        }
+        val directory = virtualFile.parent?.let { parent ->
+            if (effectiveRootScopePath == null) {
+                ProjectUtils.getToolFilePath(project, parent)
+            } else {
+                RepoScopeRegistry.relativePathInScope(effectiveRootScopePath, parent.path).orEmpty()
+            }
+        } ?: ""
 
         return FileMatch(
             name = virtualFile.name,
@@ -340,4 +361,8 @@ class FindFileTool : AbstractMcpTool() {
     private fun createMatcher(pattern: String): MinusculeMatcher {
         return NameUtil.buildMatcher("*$pattern", NameUtil.MatchingCaseSensitivity.NONE)
     }
+
+    private fun currentEffectiveRootScopePath(): String? =
+        RepoScopeContext.current()?.repoRootPath
+            ?: PathScopeContext.currentRootPath()
 }

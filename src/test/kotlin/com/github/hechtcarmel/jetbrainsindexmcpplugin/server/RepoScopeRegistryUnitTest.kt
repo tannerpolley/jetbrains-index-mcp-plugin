@@ -53,6 +53,8 @@ class RepoScopeRegistryUnitTest : TestCase() {
         assertTrue(RepoScopeRegistry.isPathInsideScope(scope, "C:/Users/Tanner/Documents/Workspaces/Projects/jetbrains-bridge"))
         assertTrue(RepoScopeRegistry.isPathInsideScope(scope, "C:/Users/Tanner/Documents/Workspaces/Projects/jetbrains-bridge/scripts"))
         assertFalse(RepoScopeRegistry.isPathInsideScope(scope, "C:/Users/Tanner/Documents/Workspaces/Projects/other-repo"))
+        assertEquals("scripts/build.ps1", RepoScopeRegistry.relativePathInScope(scope.repoRootPath, "C:/Users/Tanner/Documents/Workspaces/Projects/jetbrains-bridge/scripts/build.ps1"))
+        assertNull(RepoScopeRegistry.relativePathInScope(scope.repoRootPath, "C:/Users/Tanner/Documents/Workspaces/Projects/jetbrains-bridge-cache/config.json"))
     }
 
     fun testAgentRepoRootSelectionSkipsWorkspaceAndNestedPackages() {
@@ -103,6 +105,33 @@ class RepoScopeRegistryUnitTest : TestCase() {
         assertEquals(
             listOf("agents", "codex", "jetbrains-bridge"),
             scopes.map { it.repoId }.sorted()
+        )
+    }
+
+    fun testExtractImlContentRootPathsReadsWorkspaceSidecarModuleRoots() {
+        val xml = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <module type="EMPTY_MODULE" version="4">
+              <component name="NewModuleRootManager" inherit-compiler-output="true">
+                <content url="file://${'$'}MODULE_DIR${'$'}/../Projects/jetbrains-bridge" />
+                <content url="file://${'$'}USER_HOME${'$'}/.codex" />
+              </component>
+            </module>
+        """.trimIndent()
+
+        val roots = RepoScopeRegistry.extractImlContentRootPaths(
+            moduleFilePath = "C:/Users/Tanner/Documents/Workspaces/Workspace/.idea/jetbrains-bridge.iml",
+            projectBasePath = "C:/Users/Tanner/Documents/Workspaces/Workspace",
+            xml = xml,
+            userHomePath = "C:/Users/Tanner"
+        )
+
+        assertEquals(
+            listOf(
+                "C:/Users/Tanner/Documents/Workspaces/Projects/jetbrains-bridge",
+                "C:/Users/Tanner/.codex"
+            ),
+            roots
         )
     }
 }

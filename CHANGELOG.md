@@ -8,6 +8,7 @@
 - Added a localhost-only MCP debug page at `/index-mcp/debug` with endpoint inventory and direct JSON-RPC request testing.
 
 ### Fixed
+- Fixed repo-scoped streamable HTTP routes for workspace sidecar module roots, including manual `.codex` and `.agents` roots, and tightened `ide_find_file` results to the active repo/manual root.
 - Sourced the MCP server version from Gradle plugin metadata so initialize responses stay aligned with `pluginVersion`.
 - Restored the endpoint inventory URL dropdown in the tool window while keeping expandable endpoint details.
 

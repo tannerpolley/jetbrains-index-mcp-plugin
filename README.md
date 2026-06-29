@@ -352,9 +352,9 @@ Repo-scoped URLs use:
 /index-mcp/repos/<repo-id>/streamable-http
 ```
 
-Only Git repo roots are published as repo-scoped agent identities. Aggregate workspace folders and nested package content roots are omitted unless they have their own `.git` marker. Unique repo directory names keep the leaf name as the repo id. Duplicate leaf names use `-<pathhash8>`, where `pathhash8` is the first 8 lowercase hex characters of `sha256(normalized_canonical_repo_root_path)`.
+These URLs are live streamable HTTP routes, not only generated registration metadata. Git repo roots are published as repo-scoped agent identities, and manually attached `.codex`/`.agents` roots are published as `codex`/`agents` when they are present as workspace/module content roots. Aggregate workspace folders and nested package content roots are omitted unless they have their own `.git` marker. Unique repo directory names keep the leaf name as the repo id. Duplicate leaf names use `-<pathhash8>`, where `pathhash8` is the first 8 lowercase hex characters of `sha256(normalized_canonical_repo_root_path)`.
 
-Repo-scoped endpoints pin `project_path` to the repo root. A conflicting `project_path` returns `repo_scope_conflict`. The currently repo-safe tools are `ide_index_status`, `ide_find_file`, `ide_search_text`, `ide_file_structure`, `ide_read_file`, and `ide_open_file`; `ide_find_definition`, `ide_find_symbol`, `ide_find_implementations`, `ide_call_hierarchy`, and `ide_type_hierarchy` are rejected on repo-scoped endpoints until sub-root semantic scoping is proven.
+Repo-scoped endpoints pin `project_path` to the repo/manual root. A conflicting `project_path` returns `repo_scope_conflict`. The currently repo-safe tools are `ide_index_status`, `ide_find_file`, `ide_search_text`, `ide_file_structure`, `ide_read_file`, and `ide_open_file`; `ide_find_definition`, `ide_find_symbol`, `ide_find_implementations`, `ide_call_hierarchy`, and `ide_type_hierarchy` are rejected on repo-scoped endpoints until sub-root semantic scoping is proven. `ide_find_file` results are always reported relative to the active repo/manual root and are filtered out when the indexed file resolves outside that root.
 
 ### Browser Debug Page
 

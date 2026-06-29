@@ -7,7 +7,13 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.roots.ModuleRootManager
 import java.io.File
+import java.io.StringReader
+import java.nio.file.InvalidPathException
+import java.nio.file.Path
 import java.security.MessageDigest
+import javax.xml.parsers.DocumentBuilderFactory
+import org.w3c.dom.Element
+import org.xml.sax.InputSource
 
 object RepoScopeRegistry {
     private val LOG = logger<RepoScopeRegistry>()
@@ -89,14 +95,24 @@ object RepoScopeRegistry {
     }
 
     fun isPathInsideScope(scopeRootPath: String, path: String): Boolean {
+        return relativePathInScope(scopeRootPath, path) != null
+    }
+
+    fun relativePathInScope(scopeRootPath: String, path: String): String? {
         val normalizedPath = normalizeRepoRootPath(path)
         val normalizedRoot = normalizeRepoRootPath(scopeRootPath)
+        val prefix = "$normalizedRoot/"
         if (isWindows()) {
-            return normalizedPath.equals(normalizedRoot, ignoreCase = true) ||
-                normalizedPath.startsWith("$normalizedRoot/", ignoreCase = true)
+            if (normalizedPath.equals(normalizedRoot, ignoreCase = true)) return ""
+            if (normalizedPath.startsWith(prefix, ignoreCase = true)) {
+                return normalizedPath.substring(prefix.length)
+            }
+            return null
         }
 
-        return normalizedPath == normalizedRoot || normalizedPath.startsWith("$normalizedRoot/")
+        if (normalizedPath == normalizedRoot) return ""
+        if (normalizedPath.startsWith(prefix)) return normalizedPath.substring(prefix.length)
+        return null
     }
 
     private fun isWindows(): Boolean =
@@ -141,9 +157,12 @@ object RepoScopeRegistry {
 
     fun collectProjectIndexScopes(project: Project): List<RepoScope> {
         val workspaceProjectPath = project.basePath?.let { normalizeRepoRootPath(it) }
+        val configuredContentRootPaths = collectProjectConfiguredContentRootPaths(project)
         return buildIndexScopes(
-            repoRootPaths = collectRepoRootPaths(project),
-            manualRootPaths = collectProjectContentRootPaths(project),
+            repoRootPaths = selectAgentRepoRootPaths(
+                collectRepoRootPaths(project) + configuredContentRootPaths
+            ),
+            manualRootPaths = collectProjectContentRootPaths(project) + configuredContentRootPaths,
             workspaceProjectPath = workspaceProjectPath
         )
     }
@@ -169,6 +188,51 @@ object RepoScopeRegistry {
             .map { normalizeRepoRootPath(it) }
             .filter { it.isNotBlank() }
             .distinct()
+    }
+
+    fun extractImlContentRootPaths(
+        moduleFilePath: String,
+        projectBasePath: String?,
+        xml: String,
+        userHomePath: String = System.getProperty("user.home")
+    ): List<String> {
+        val moduleFile = File(normalizeRepoRootPath(moduleFilePath))
+        val moduleDir = if (moduleFile.parentFile?.name == ".idea" && projectBasePath != null) {
+            projectBasePath
+        } else {
+            moduleFile.parent
+        } ?: return emptyList()
+
+        val document = try {
+            val factory = DocumentBuilderFactory.newInstance()
+            try {
+                factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+                factory.setFeature("http://xml.org/sax/features/external-general-entities", false)
+                factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false)
+            } catch (_: Exception) {
+                // Some JDK XML providers do not support every hardening feature.
+            }
+            factory.isExpandEntityReferences = false
+            factory.newDocumentBuilder().parse(InputSource(StringReader(xml)))
+        } catch (e: Exception) {
+            LOG.debug("Failed to parse module file $moduleFilePath", e)
+            return emptyList()
+        }
+
+        val contentNodes = document.getElementsByTagName("content")
+        val roots = mutableListOf<String>()
+        for (i in 0 until contentNodes.length) {
+            val element = contentNodes.item(i) as? Element ?: continue
+            val url = element.getAttribute("url")
+            resolveImlFileUrl(
+                url = url,
+                moduleDir = moduleDir,
+                projectBasePath = projectBasePath,
+                userHomePath = userHomePath
+            )?.let { roots += it }
+        }
+
+        return roots.distinct()
     }
 
     fun collectProjectWorkspaceModules(project: Project): List<WorkspaceModuleScope> {
@@ -244,6 +308,55 @@ object RepoScopeRegistry {
         }
 
         return selectAgentRepoRootPaths(roots)
+    }
+
+    private fun collectProjectConfiguredContentRootPaths(project: Project): List<String> {
+        val basePath = project.basePath?.let { normalizeRepoRootPath(it) } ?: return emptyList()
+        val ideaDir = File(basePath, ".idea")
+        if (!ideaDir.isDirectory) return emptyList()
+
+        val moduleFiles = ideaDir.listFiles { file -> file.isFile && file.extension.equals("iml", ignoreCase = true) }
+            ?: return emptyList()
+
+        return moduleFiles
+            .flatMap { moduleFile ->
+                try {
+                    extractImlContentRootPaths(
+                        moduleFilePath = moduleFile.path,
+                        projectBasePath = basePath,
+                        xml = moduleFile.readText()
+                    )
+                } catch (e: Exception) {
+                    LOG.debug("Failed to read module file ${moduleFile.path}", e)
+                    emptyList()
+                }
+            }
+            .filter { it.isNotBlank() }
+            .distinct()
+    }
+
+    private fun resolveImlFileUrl(
+        url: String,
+        moduleDir: String,
+        projectBasePath: String?,
+        userHomePath: String
+    ): String? {
+        if (!url.startsWith("file://")) return null
+
+        var path = url.removePrefix("file://")
+            .replace("\$MODULE_DIR\$", normalizeRepoRootPath(moduleDir))
+            .replace("\$PROJECT_DIR\$", projectBasePath?.let { normalizeRepoRootPath(it) }.orEmpty())
+            .replace("\$USER_HOME\$", normalizeRepoRootPath(userHomePath))
+
+        if (Regex("^/[A-Za-z]:/").containsMatchIn(path)) {
+            path = path.removePrefix("/")
+        }
+
+        return try {
+            normalizeRepoRootPath(Path.of(path).normalize().toString())
+        } catch (_: InvalidPathException) {
+            null
+        }
     }
 
     private fun repoLeafName(path: String): String =
